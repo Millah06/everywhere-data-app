@@ -25,7 +25,6 @@ router.post("/", async (req: any, res: any) => {
         headers: {
           "username": process.env.VTPASS_USERNAME,
           "password": process.env.VTPASS_PASSWORD,
-          "Content-Type": "application/json",
           },
       });
 

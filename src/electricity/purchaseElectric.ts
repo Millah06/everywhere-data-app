@@ -25,7 +25,7 @@ router.post("/", async (req: any, res: any) => {
         headers: {
           "api-key": process.env.VTPASS_API_KEY,
           "secret-key": process.env.VTPASS_SECRET_KEY,
-          "Content-Type": "application/json",
+           
           },
       });
 
