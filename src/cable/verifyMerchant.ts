@@ -4,7 +4,7 @@ import {checkAuth} from "../webhook/utils/auth";
 
 const router = express.Router();
 
-router.post("/verifyMerchant", async (req: any, res: any) => {
+router.post("/", async (req: any, res: any) => {
 
   try {
     await checkAuth(req);

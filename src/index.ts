@@ -18,7 +18,7 @@ app.post("/airtime/sendAirtime", sendAirtime);
 app.post("/cable/purchaseTV", purchaseTV);
 app.post("/cable/verifyMerchant", verifyMerchant);
 app.post("/data/buyData", buyData);
-app.post("electricity/verifyMeter", verifyMeter);
+app.post("/electricity/verifyMeter", verifyMeter);
 app.post("/electricity/purchaseElectric", purchaseElectric)
 
 // add more like: app.post("/wallet/fund", handleFundWallet)
