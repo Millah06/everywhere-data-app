@@ -1,10 +1,8 @@
 import axios from "axios";
-import express from "express";
 import { checkAuth } from "../webhook/utils/auth";
 
-const router = express.Router();
 
-router.post("/", async (req: any, res: any) => {
+const sendAirtime = async (req: any, res: any) => {
   try {
     await checkAuth(req); // Verify auth
 
@@ -32,6 +30,6 @@ router.post("/", async (req: any, res: any) => {
     console.error("sendAirtime error:", error?.response?.data || error.message);
     return res.status(500).json({ error: "Airtime failed", details: error?.response?.data });
   }
-});
+};
 
-export default router;
+export default sendAirtime;

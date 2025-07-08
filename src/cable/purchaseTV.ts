@@ -1,10 +1,7 @@
-import express from "express";
 import axios from "axios";
 import {checkAuth} from "../webhook/utils/auth";
 
-const router = express.Router();
-
-router.post("/", async (req: any, res: any) => {
+const purchaseTV = async (req: any, res: any) => {
   try {
     await checkAuth(req);
 
@@ -34,8 +31,8 @@ router.post("/", async (req: any, res: any) => {
     console.error("Subscription Error:", error?.response?.data || error.message);
     return res.status(500).json({ error: "Cable Subscription failed", details: error?.response?.data });
   }
-});
+};
 
-export default router;
+export default purchaseTV;
 
 

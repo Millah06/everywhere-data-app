@@ -1,10 +1,7 @@
 import axios from "axios";
-import express from "express";
 import {checkAuth} from "../webhook/utils/auth";
 
-const router = express.Router();
-
-router.post("/", async (req: any, res: any) => {
+const buyData = async (req: any, res: any) => {
   try {
     await checkAuth(req); // Verify auth
 
@@ -32,6 +29,6 @@ router.post("/", async (req: any, res: any) => {
     return res.status(500).json({error: "Data failed",
       details: error?.response?.data});
   }
-});
+};
 
-export default router;
+export default buyData;
