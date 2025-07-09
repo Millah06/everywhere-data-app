@@ -19,7 +19,8 @@ const verifyMerchant = async (req: any, res: any) => {
       billersCode: smartCard,
     }, {
       headers: {
-        Authorization: `Basic ${auth}`,
+        "api-key": process.env.VTPASS_API_KEY,
+        "secret-key": process.env.VTPASS_SECRET_KEY,
       },
     });
     return {status: "success", data: response.data};
