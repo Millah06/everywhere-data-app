@@ -3,6 +3,8 @@ import {checkAuth} from "../webhook/utils/auth";
 
 const verifyMerchant = async (req: any, res: any) => {
 
+  const auth = Buffer.from(`${process.env.VTPASS_USERNAME}:${process.env.VTPASS_PASSWORD}`).toString("base64");
+
   try {
     await checkAuth(req);
 
@@ -17,8 +19,7 @@ const verifyMerchant = async (req: any, res: any) => {
       billersCode: smartCard,
     }, {
       headers: {
-        "username": process.env.VTPASS_USERNAME,
-        "password": process.env.VTPASS_PASSWORD,
+        Authorization: `Basic ${auth}`,
       },
     });
     return {status: "success", data: response.data};

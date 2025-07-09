@@ -2,6 +2,8 @@ import axios from "axios";
 import {checkAuth} from "../webhook/utils/auth";
 
 const purchaseTV = async (req: any, res: any) => {
+
+  const auth = Buffer.from(`${process.env.VTPASS_USERNAME}:${process.env.VTPASS_PASSWORD}`).toString("base64");
   try {
     await checkAuth(req);
 
@@ -20,8 +22,7 @@ const purchaseTV = async (req: any, res: any) => {
       subscription_type: subscriptionType,
       }, {
         headers: {
-          "username": process.env.VTPASS_USERNAME,
-          "password": process.env.VTPASS_PASSWORD,
+           Authorization: `Basic ${auth}`,
           },
       });
 
