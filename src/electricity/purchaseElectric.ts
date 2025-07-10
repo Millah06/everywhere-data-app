@@ -26,7 +26,7 @@ const purchaseElectric = async (req: any, res: any) => {
           },
       });
 
-    return { status: "success", data: response.data };
+    return res.status(200).json({ status: "success", response: response.data });
 
   } catch (error: any) {
     console.error("Subscription Error:", error?.response?.data || error.message);

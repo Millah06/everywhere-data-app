@@ -22,7 +22,7 @@ const verifyMeter = async (req: any, res: any) => {
         "secret-key": process.env.VTPASS_SECRET_KEY,
       },
     });
-    return {status: "success", data: response.data};
+    return res.status(200).json({ status: "success", response: response.data });
   } catch (error: any) {
     console.error("Verify Merchant Error:", error?.response?.data || error.message);
     return res.status(500).json({ error: "Verifying Merchant", details: error?.response?.data });
