@@ -8,6 +8,8 @@ import verifyMerchant from "./cable/verifyMerchant";
 import purchaseTV from "./cable/purchaseTV";
 import verifyMeter from "./electricity/verifyMeter";
 import purchaseElectric from "./electricity/purchaseElectric"
+import purchaseSmile from "./data/purchaseSmile";
+import jambServices from "./exams/jambServices";
 // import other functions here too if needed
 
 const app = express();
@@ -19,7 +21,9 @@ app.post("/cable/purchaseTV", purchaseTV);
 app.post("/cable/verifyMerchant", verifyMerchant);
 app.post("/data/buyData", buyData);
 app.post("/electricity/verifyMeter", verifyMeter);
-app.post("/electricity/purchaseElectric", purchaseElectric)
+app.post("/electricity/purchaseElectric", purchaseElectric);
+app.post('/dat/purchaseSmile', purchaseSmile);
+app.get("/exams/jambServices", jambServices);
 
 // add more like: app.post("/wallet/fund", handleFundWallet)
 
