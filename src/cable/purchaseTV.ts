@@ -22,8 +22,7 @@ const purchaseTV = async (req: any, res: any) => {
       subscription_type: subscriptionType,
       }, {
         headers: {
-           "api-key": process.env.VTPASS_API_KEY,
-           "secret-key": process.env.VTPASS_SECRET_KEY,
+            'Authorization': `Basic ${auth}`
           },
       });
 
