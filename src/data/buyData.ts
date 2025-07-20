@@ -14,7 +14,7 @@ const buyData = async (req: any, res: any) => {
     const response = await axios.post("https://sandbox.vtpass.com/api/pay", {
       request_id: requestID,
       serviceID: network,
-      variation_code: phoneNumber,
+      variation_code: variationCode,
       phone: phoneNumber,
     }, {
       headers: {
