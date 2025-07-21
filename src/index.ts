@@ -22,7 +22,7 @@ app.post("/cable/verifyMerchant", verifyMerchant);
 app.post("/data/buyData", buyData);
 app.post("/electricity/verifyMeter", verifyMeter);
 app.post("/electricity/purchaseElectric", purchaseElectric);
-app.post('/dat/purchaseSmile', purchaseSmile);
+app.post('/data/purchaseSmile', purchaseSmile);
 app.get("/exams/jambServices", jambServices);
 
 // add more like: app.post("/wallet/fund", handleFundWallet)
