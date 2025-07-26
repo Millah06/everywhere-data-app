@@ -33,11 +33,11 @@ const paystackWebhook = async (req: Request, res: Response): Promise<void> => {
       const userDoc = await userRef.get();
 
       if (userDoc.exists) {
-        const currentWallet = userDoc.data()?.wallet || 0;
+        const currentWallet = userDoc.data()?.['balance'] || 0;
 
         // ✅ Update wallet balance
         await userRef.update({
-          wallet: currentWallet + amount,
+          'balance': currentWallet + amount,
           updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
 
