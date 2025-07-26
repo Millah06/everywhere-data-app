@@ -21,23 +21,29 @@ const paystackWebhook = async (req: Request, res: Response): Promise<void> => {
 
     if (event === "charge.success") {
       const amount = data.amount / 100;
-      const uid = data.metadata?.uid;
+      const email = data.customer.email;
+    //   const uid = data.metadata?.uid;
 
-      if (!uid) {
+      if (!email ){
         console.error("Missing UID in metadata");
         res.sendStatus(400);
         return;
       }
 
-      const userRef = admin.firestore().collection("users").doc(uid);
-      const userDoc = await userRef.get();
+      const userQuery = await admin.firestore().collection("users")
+        .where("email", "==", email)
+        .limit(1).get();
 
-      if (userDoc.exists) {
-        const currentWallet = userDoc.data()?.['balance'] || 0;
+       
+
+       if (!userQuery.empty) {
+        const userDoc = userQuery.docs[0];
+        const userRef = userDoc.ref;
+        const currentWallet = userDoc.data()?.balance || 0;
 
         // ✅ Update wallet balance
         await userRef.update({
-          'balance': currentWallet + amount,
+          balance: currentWallet + amount,
           updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
 
