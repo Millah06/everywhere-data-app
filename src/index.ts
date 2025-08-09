@@ -5,6 +5,7 @@ import dotenv from "dotenv";
 import * as admin from "firebase-admin";
 
 import sendAirtime from "./airtime/sendAirtime";
+import sendRechargeCard from "./airtime/airtimePin";
 import buyData from "./data/buyData";
 import verifyMerchant from "./cable/verifyMerchant";
 import purchaseTV from "./cable/purchaseTV";
@@ -33,6 +34,7 @@ app.use(cors({origin: true}));
 app.use(express.json());
 
 app.post("/airtime/sendAirtime", sendAirtime);
+app.post("/airtime/sendRecharge", sendRechargeCard);
 app.post("/cable/purchaseTV", purchaseTV);
 app.post("/cable/verifyMerchant", verifyMerchant);
 app.post("/data/buyData", buyData);
