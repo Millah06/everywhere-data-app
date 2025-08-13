@@ -7,14 +7,14 @@ const purchaseElectric = async (req: any, res: any) => {
 
     const {requestID, serviceID, phoneNumber, meterNumber, meterType, amount, quantity} = req.body;
 
-    if (!phoneNumber || !serviceID || !requestID || !meterNumber || !meterType) {
+    if (!phoneNumber || !serviceID || !requestID || !meterType) {
       return res.status(400).json({ error: "Missing required fields" });
       }
 
     const response = await axios.post("https://sandbox.vtpass.com/api/pay", {
       request_id: requestID,
       serviceID: serviceID,
-      billersCode: meterNumber,
+      billersCode: meterNumber !== undefined ? meterNumber : undefined,
       amount: amount,
       phone: phoneNumber,
       variation_code: meterType,
