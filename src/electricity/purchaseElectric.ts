@@ -5,7 +5,7 @@ const purchaseElectric = async (req: any, res: any) => {
   try {
     await checkAuth(req);
 
-    const {requestID, serviceID, phoneNumber, meterNumber, meterType, amount} = req.body;
+    const {requestID, serviceID, phoneNumber, meterNumber, meterType, amount, quantity} = req.body;
 
     if (!phoneNumber || !serviceID || !requestID || !meterNumber || !meterType) {
       return res.status(400).json({ error: "Missing required fields" });
@@ -18,6 +18,7 @@ const purchaseElectric = async (req: any, res: any) => {
       amount: amount,
       phone: phoneNumber,
       variation_code: meterType,
+      ...(quantity && {quantity})
       }, {
         headers: {
           "api-key": process.env.VTPASS_API_KEY,
