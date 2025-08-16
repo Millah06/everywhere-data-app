@@ -36,7 +36,8 @@ const createVA = async (req: Request, res: Response): Promise<void> => {
 
     // ✅ Save VA details to Firestore under users collection
     await admin.firestore().collection("users").doc(uid).set({
-      balance: 0,  
+      balance: 0,
+      reward: 0,  
       va: {
         account_name: vaData.account_name,
         account_number: vaData.account_number,
