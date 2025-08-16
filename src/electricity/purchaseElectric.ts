@@ -25,7 +25,6 @@ const purchaseElectric = async (req: any, res: any) => {
           "secret-key": process.env.VTPASS_SECRET_KEY,
            
           },
-          responseType: 
       });
 
     return res.status(200).json({ status: "success", response: response.data });
