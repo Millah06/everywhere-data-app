@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import crypto from "crypto";
 import admin from "../utils/firebase";
+import { sendNotification } from "../notification";
 
 const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET!;
 
@@ -22,6 +23,8 @@ const paystackWebhook = async (req: Request, res: Response): Promise<void> => {
     if (event === "charge.success") {
       const amount = data.amount / 100;
       const email = data.customer.email;
+      const senderName = data.authorization?.sender_name || 'Unknown';
+      const bankName = data.authorization?.sender_bank || 'UnKnown';
     //   const uid = data.metadata?.uid;
 
       if (!email ){
@@ -40,12 +43,21 @@ const paystackWebhook = async (req: Request, res: Response): Promise<void> => {
         const userDoc = userQuery.docs[0];
         const userRef = userDoc.ref;
         const currentWallet = userDoc.data()?.balance || 0;
+        const notificationToken = userDoc.data().notificationToken;
 
         // ✅ Update wallet balance
         await userRef.update({
           balance: currentWallet + amount,
           updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
+
+        if (notificationToken) {
+          await sendNotification(
+            notificationToken,
+            'Transfer Reeived',
+            `You receeived ₦${amount} from ${senderName} via ${bankName}`
+          )
+        }
 
         // ✅ Add transaction
         await userRef.collection("transactions").add({
