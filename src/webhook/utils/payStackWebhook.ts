@@ -59,6 +59,16 @@ const paystackWebhook = async (req: Request, res: Response): Promise<void> => {
           )
         }
 
+        const newFund =userDoc.data().recentFund;
+
+        await newFund.add({
+          amount,
+          type: "credit",
+          method: "Paystack VA",
+          description: `Wallet funding via ${data.authorization.bank}`,
+          timestamp: admin.firestore.FieldValue.serverTimestamp()
+        })
+
         // ✅ Add transaction
         await userRef.collection("transactions").add({
           amount,

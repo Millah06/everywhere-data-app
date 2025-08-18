@@ -12,7 +12,7 @@ const sendRechargeCard = async (req: any, res: any) => {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
-    const response = await axios.post("https://vtunaija.com.ng/api/rechargepin/", {
+    const response = await axios.post("https://sandbox.vtunaija.com.ng/api/rechargepin/", {
       network: network,
       network_amount: network_amount,
       quantity: quantity,
@@ -21,6 +21,7 @@ const sendRechargeCard = async (req: any, res: any) => {
       headers: {
         "api-key": process.env.VTPASS_API_KEY,
         "secret-key": process.env.VTPASS_SECRET_KEY,
+        Authorization: `Token Garba803524f2ea3658fbe433ddce44f03796a9`
       },
     });
 
