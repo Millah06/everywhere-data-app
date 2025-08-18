@@ -12,7 +12,7 @@ const sendRechargeCard = async (req: any, res: any) => {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
-    const response = await axios.post("https://sandbox.vtunaija.com.ng/api/rechargepin", {
+    const response = await axios.post("https://sandbox.vtunaija.com.ng/api/rechargepin/", {
       network: network,
       network_amount: network_amount,
       quantity: quantity,
