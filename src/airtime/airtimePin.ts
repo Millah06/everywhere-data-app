@@ -19,9 +19,8 @@ const sendRechargeCard = async (req: any, res: any) => {
       name_on_card: name_on_card,
     }, {
       headers: {
-        "api-key": process.env.VTPASS_API_KEY,
-        "secret-key": process.env.VTPASS_SECRET_KEY,
-        Authorization: `Token Garba803524f2ea3658fbe433ddce44f03796a9`
+        Authorization: `Token ${process.env.VTUNAIJA_API_KEY}`,
+        'Content-Type': 'application/json'
       },
     });
 
