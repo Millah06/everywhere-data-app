@@ -12,7 +12,7 @@ const sendAirtime = async (req: any, res: any) => {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
-    const response = await axios.post("https://sandbox.vtpass.com/api/pay", {
+    const response = await axios.post("https://vtpass.com/api/pay", {
       request_id: requestID,
       serviceID: network,
       amount: amount,

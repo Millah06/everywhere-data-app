@@ -14,7 +14,7 @@ const verifyMerchant = async (req: any, res: any) => {
       return res.status(400).json({error: "Missing required fields"});
     }
 
-    const response = await axios.post("https://sandbox.vtpass.com/api/merchant-verify", {
+    const response = await axios.post("https://vtpass.com/api/merchant-verify", {
       serviceID: serviceID,
       billersCode: smartCard,
     }, {

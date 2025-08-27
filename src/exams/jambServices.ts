@@ -12,7 +12,7 @@ const jambServices = async (req: any, res: any) => {
       return res.status(400).json({ error: "Missing required fields" });
       }
 
-    const response = await axios.get("https://sandbox.vtpass.com/api/service-variations", {
+    const response = await axios.get("https://vtpass.com/api/service-variations", {
       params: {serviceID : serviceID},
       headers: {
         "api-key": process.env.VTPASS_API_KEY,
