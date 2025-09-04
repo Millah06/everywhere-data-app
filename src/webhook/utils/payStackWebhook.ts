@@ -20,8 +20,15 @@ const paystackWebhook = async (req: Request, res: Response): Promise<void> => {
 
     const { event, data } = req.body;
 
+    const docRef = admin.firestore().collection('bonuses ').doc('reward');
+    const doc = await docRef.get();
+     const docData = doc.data();
+
+
     if (event === "charge.success") {
-      const amount = data.amount / 100;
+     
+      const fakeamount = data.amount / 100;
+      const amount = fakeamount -  docData?.fundingFees;
       const email = data.customer.email;
       const senderName = data.authorization?.sender_name || 'Unknown';
       const bankName = data.authorization?.sender_bank || 'UnKnown';
@@ -36,8 +43,6 @@ const paystackWebhook = async (req: Request, res: Response): Promise<void> => {
       const userQuery = await admin.firestore().collection("users")
         .where("email", "==", email)
         .limit(1).get();
-
-       
 
        if (!userQuery.empty) {
         const userDoc = userQuery.docs[0];
@@ -59,7 +64,7 @@ const paystackWebhook = async (req: Request, res: Response): Promise<void> => {
           )
         }
 
-        const newFund =userDoc.data().recentFund;
+        const newFund = userDoc.data().recentFund;
 
         await newFund.add({
           amount,

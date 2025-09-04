@@ -26,7 +26,7 @@ const createVA = async (req: Request, res: Response): Promise<void> => {
     // ✅ Create Dedicated Virtual Account with UID in metadata
     const vaRes = await axios.post(`${PAYSTACK_BASE_URL}/dedicated_account`, {
       customer: customerId,
-      preferred_bank: "wema-bank",
+      preferred_bank: "paystack-titan",
       metadata: { uid }
     }, {
       headers: { Authorization: `Bearer ${PAYSTACK_SECRET}` }
