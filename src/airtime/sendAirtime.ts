@@ -116,7 +116,7 @@ const sendAirtimeSecure = async (req: any, res: any) => {
 
       const calculation = calculateTransaction({
         productAmount: Number(amount),
-        rewardBalance: transactionData?.rewardBalanceBefore || 0,
+        rewardBalance: rewardBalance,
         walletBalance: wallet.availableBalance,
         useReward,
         isRecharge,
