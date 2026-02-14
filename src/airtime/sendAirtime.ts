@@ -115,7 +115,7 @@ const sendAirtimeSecure = async (req: any, res: any) => {
     }
    
 
-    const transactionStatus = vendorResponse.data?.content?.transactions?.status;
+    const transactionStatus = vendorResponse.content?.transactions?.status;
 
     console.log("Vendor response:", vendorResponse);
 
