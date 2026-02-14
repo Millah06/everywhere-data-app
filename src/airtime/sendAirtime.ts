@@ -91,7 +91,7 @@ const sendAirtimeSecure = async (req: any, res: any) => {
     let vendorResponse;
     try {
 
-      vendorResponse = await axios.post(
+      const response = await axios.post(
       "https://vtpass.com/api/pay",
       {
         request_id: requestID,
@@ -104,9 +104,11 @@ const sendAirtimeSecure = async (req: any, res: any) => {
           "api-key": process.env.VTPASS_API_KEY,
           "secret-key": process.env.VTPASS_SECRET_KEY,
         },
-        // timeout: 15000, // 15 seconds timeout
+        timeout: 15000, // 15 seconds timeout
       }
     );
+
+    vendorResponse = response.data;
 
     } catch (err: any) {
        vendorResponse = { error: err.message, };
