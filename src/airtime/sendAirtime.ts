@@ -72,9 +72,9 @@ const sendAirtimeSecure = async (req: any, res: any) => {
         type: "utility",
         clientRequestId,
         metaData: {
-          amount,
+          finalAmountToPay,
           phoneNumber,
-          subType: `${network.toUpperCase()} Airtime`,
+          productName: `${network.toUpperCase()} Airtime`,
         },
         humanRef,
         status: "processing",
@@ -183,6 +183,7 @@ const sendAirtimeSecure = async (req: any, res: any) => {
             t.update(txRef, {
               status: "failed",
               updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+              error: "I failed here",
             });
           });
         }
