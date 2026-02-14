@@ -144,7 +144,8 @@ const sendAirtimeSecure = async (req: any, res: any) => {
           vendorResponse,
         });
 
-        responsePayload = { status: true, transaction_id: humanRef, date: admin.firestore.FieldValue.serverTimestamp() };
+        responsePayload = { status: true, transaction_id: humanRef, 
+          date: transactionData?.updatedAt };
       } else {
         // Refund locked funds, no reward
         t.update(userRef, {
