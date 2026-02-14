@@ -115,6 +115,8 @@ const sendAirtimeSecure = async (req: any, res: any) => {
 
     const transactionStatus = vendorResponse.data?.content?.transactions?.status;
 
+    console.log("Vendor response:", vendorResponse);
+
     
 
     // Final Firestore transaction to update locked balance and status
