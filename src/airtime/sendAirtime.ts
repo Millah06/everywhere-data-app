@@ -98,7 +98,7 @@ const sendAirtimeSecure = async (req: any, res: any) => {
           "api-key": process.env.VTPASS_API_KEY,
           "secret-key": process.env.VTPASS_SECRET_KEY,
         },
-        timeout: 15000, // 15 seconds timeout
+        // timeout: 15000, // 15 seconds timeout
       }
     );
 
