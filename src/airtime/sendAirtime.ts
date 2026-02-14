@@ -22,6 +22,8 @@ const sendAirtimeSecure = async (req: any, res: any) => {
 
     const uid = await checkAuth(req); // Verify auth
 
+    let responsePayload;
+
     const transactionDocRef = admin
       .firestore()
       .collection("transactions")
@@ -78,14 +80,18 @@ const sendAirtimeSecure = async (req: any, res: any) => {
         },
         humanRef,
         status: "processing",
-        walletToDeduct: finalAmountToPay,
+        finalAmount: finalAmountToPay,
         rewardBalanceBefore: rewardBalance,
+        finalRewardBalance: calculation.finalRewardBalance,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
     });
 
-    // Call third-party vendor
-    const vendorResponse = await axios.post(
+     // Call third-party vendor
+    let vendorResponse;
+    try {
+
+      vendorResponse = await axios.post(
       "https://vtpass.com/api/pay",
       {
         request_id: requestID,
@@ -102,7 +108,14 @@ const sendAirtimeSecure = async (req: any, res: any) => {
       }
     );
 
+    } catch (err: any) {
+       vendorResponse = { error: err.message, };
+    }
+   
+
     const transactionStatus = vendorResponse.data?.content?.transactions?.status;
+
+    
 
     // Final Firestore transaction to update locked balance and status
     await admin.firestore().runTransaction(async (t) => {
@@ -112,22 +125,13 @@ const sendAirtimeSecure = async (req: any, res: any) => {
 
       // Retrieve calculation stored before
       const transactionData = (await t.get(transactionDocRef)).data();
-      const lockedAmount = transactionData?.walletToDeduct || 0;
-
-      const calculation = calculateTransaction({
-        productAmount: Number(amount),
-        rewardBalance: rewardBalance,
-        walletBalance: wallet.availableBalance,
-        useReward,
-        isRecharge,
-        bonusPercent: bonusDoc.data()?.airtime,
-      });
+      const lockedAmount = transactionData?.finalAmount || 0;
 
       if (transactionStatus === "delivered") {
         // Deduct locked funds, add rewards
         t.update(userRef, {
           "wallet.fiat.lockedBalance": wallet.lockedBalance - lockedAmount,
-          "wallet.fiat.rewardBalance": calculation.finalRewardBalance,
+          "wallet.fiat.rewardBalance": transactionData?.finalRewardBalance,
         });
 
         t.update(transactionDocRef, {
@@ -136,7 +140,7 @@ const sendAirtimeSecure = async (req: any, res: any) => {
           vendorResponse,
         });
 
-        return res.json({ status: true, transaction_id: humanRef, date: admin.firestore.FieldValue.serverTimestamp() });
+        responsePayload = { status: true, transaction_id: humanRef, date: admin.firestore.FieldValue.serverTimestamp() };
       } else {
         // Refund locked funds, no reward
         t.update(userRef, {
@@ -151,9 +155,12 @@ const sendAirtimeSecure = async (req: any, res: any) => {
           vendorResponse,
         });
 
-        return res.json({ status: false });
+        responsePayload = { status: false };
       }
     });
+
+    return res.json(responsePayload);
+
   } catch (error: any) {
     console.error(
       "sendAirtimeSecure error:",
@@ -175,7 +182,7 @@ const sendAirtimeSecure = async (req: any, res: any) => {
           await admin.firestore().runTransaction(async (t) => {
             const userDoc = await t.get(userRef);
             const wallet = userDoc.data()?.wallet?.fiat;
-            const lockedAmount = txDoc.data()?.walletToDeduct || 0;
+            const lockedAmount = txDoc.data()?.finalAmount || 0;
             t.update(userRef, {
               "wallet.fiat.lockedBalance": wallet.lockedBalance - lockedAmount,
               "wallet.fiat.availableBalance": wallet.availableBalance + lockedAmount,
