@@ -1,6 +1,6 @@
 // backend/controllers/rewardController.ts
 
-import admin from 'firebase-admin';
+import admin from "firebase-admin";
 import {
   calculateReward,
   calculateLevel,
@@ -8,36 +8,50 @@ import {
   MIN_CONVERSION_POINTS,
   BOOST_COST,
   BOOST_DURATION_HOURS,
-} from '../utils/rewardCalculator';
-import { checkAuth } from '../webhook/utils/auth';
+} from "../utils/rewardCalculator";
+import { checkAuth } from "../webhook/utils/auth";
 
 const db = admin.firestore();
 
 // Assume wallet helpers exist
-import { creditWallet, deductWallet, getWalletBalance } from '../helpers/walletHelper';
+import {
+  creditWallet,
+  deductWallet,
+  getWalletBalance,
+} from "../helpers/walletHelper";
 
+// Assume these exist
 
 const rewardPost = async (req: any, res: any) => {
+  const senderId = req.user?.uid;
+  const { postId, amount } = req.body;
+
+  console.log("=== REWARD POST START ===");
+  console.log("Sender:", senderId);
+  console.log("Post ID:", postId);
+  console.log("Amount:", amount);
+
   try {
-
-    
-    // const senderId = req.user?.uid;
-    const { postId, amount } = req.body;
-    const senderId = await checkAuth(req); // Verify auth
-
+    // Validation
     if (!senderId || !postId || !amount) {
-      return res.status(400).json({ error: 'Missing required fields' });
+      return res.status(400).json({ error: "Missing required fields" });
     }
 
     if (amount < 10 || amount > 10000) {
-      return res.status(400).json({ error: 'Reward amount must be between ₦10 and ₦10,000' });
+      return res
+        .status(400)
+        .json({ error: "Reward amount must be between ₦10 and ₦10,000" });
     }
 
-    // Check daily limit
-    const today = new Date().toISOString().split('T')[0];
-    const limitRef = db.collection('userDailyLimits').doc(`${senderId}_${today}`);
+    // Check daily limit (do this OUTSIDE transaction)
+    const today = new Date().toISOString().split("T")[0];
+    const limitRef = db
+      .collection("userDailyLimits")
+      .doc(`${senderId}_${today}`);
     const limitDoc = await limitRef.get();
     const limitData = limitDoc.data();
+
+    console.log("Daily limit check:", limitData);
 
     if (limitData && limitData.totalRewarded >= DAILY_REWARD_LIMIT) {
       return res.status(400).json({
@@ -45,82 +59,117 @@ const rewardPost = async (req: any, res: any) => {
       });
     }
 
-    // Get post and creator
-    const postRef = db.collection('posts').doc(postId);
+    // Get post (do this OUTSIDE transaction)
+    const postRef = db.collection("posts").doc(postId);
     const postDoc = await postRef.get();
 
+    console.log("Post exists:", postDoc.exists);
+
     if (!postDoc.exists) {
-      return res.status(404).json({ error: 'Post not found' });
+      return res.status(404).json({ error: "Post not found" });
     }
 
     const postData = postDoc.data();
     const creatorId = postData?.userId;
 
+    console.log("Creator ID:", creatorId);
+
     if (!creatorId) {
-      return res.status(400).json({ error: 'Invalid post data' });
+      return res.status(400).json({ error: "Invalid post data" });
     }
 
     if (senderId === creatorId) {
-      return res.status(400).json({ error: 'Cannot reward your own post' });
+      return res.status(400).json({ error: "Cannot reward your own post" });
     }
 
     // Calculate reward
     const calculation = calculateReward(amount);
+    console.log("Calculation:", calculation);
 
-    // Execute transaction
+    // Now do Firestore transaction
+    console.log("Starting Firestore transaction...");
+
     await db.runTransaction(async (transaction) => {
-      // Deduct from sender wallet
+      // Deduct from wallet BEFORE transaction
+      console.log("Deducting from wallet...");
       await deductWallet(senderId, amount);
+      console.log("Wallet deducted successfully");
+      
+      const statsRef = db.collection("creatorStats").doc(creatorId);
 
-      // Update creator stats
-      const statsRef = db.collection('creatorStats').doc(creatorId);
+      // READ PHASE
+      console.log("Reading creator stats...");
       const statsDoc = await transaction.get(statsRef);
+      console.log("Stats exists:", statsDoc.exists);
 
+      // WRITE PHASE
       if (statsDoc.exists) {
+        const currentStats = statsDoc.data();
+        const newTotalPoints =
+          (currentStats?.totalRewardPoints || 0) + calculation.pointsAwarded;
+        const newLevel = calculateLevel(newTotalPoints);
+
+        console.log(
+          "Updating existing stats. New total points:",
+          newTotalPoints,
+        );
+
         transaction.update(statsRef, {
-          totalRewardPoints: admin.firestore.FieldValue.increment(calculation.pointsAwarded),
+          totalRewardPoints: admin.firestore.FieldValue.increment(
+            calculation.pointsAwarded,
+          ),
           totalRewardsReceived: admin.firestore.FieldValue.increment(1),
-          weeklyPoints: admin.firestore.FieldValue.increment(calculation.pointsAwarded),
+          weeklyPoints: admin.firestore.FieldValue.increment(
+            calculation.pointsAwarded,
+          ),
           lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+          level: newLevel,
         });
       } else {
+        console.log("Creating new stats document");
+
         transaction.set(statsRef, {
           userId: creatorId,
           totalRewardPoints: calculation.pointsAwarded,
           totalEarnedNaira: 0,
           totalRewardsReceived: 1,
-          level: 1,
+          level: calculateLevel(calculation.pointsAwarded),
           isKycVerified: false,
           lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
           weeklyPoints: calculation.pointsAwarded,
           weeklyResetAt: admin.firestore.Timestamp.fromDate(
-            new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+            new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
           ),
         });
       }
 
       // Update post
+      console.log("Updating post...");
       transaction.update(postRef, {
         rewardCount: admin.firestore.FieldValue.increment(1),
-        rewardPointsTotal: admin.firestore.FieldValue.increment(calculation.pointsAwarded),
+        rewardPointsTotal: admin.firestore.FieldValue.increment(
+          calculation.pointsAwarded,
+        ),
       });
 
       // Log transaction
-      const transactionRef = db.collection('rewardTransactions').doc();
-      transaction.set(transactionRef, {
-        transactionId: transactionRef.id,
+      console.log("Creating transaction log...");
+      const txRef = db.collection("rewardTransactions").doc();
+      transaction.set(txRef, {
+        transactionId: txRef.id,
         senderId,
         creatorId,
         postId,
         amount: calculation.originalAmount,
         platformFee: calculation.platformFee,
         pointsAwarded: calculation.pointsAwarded,
-        type: 'reward',
-        status: 'completed',
+        type: "reward",
+        status: "completed",
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
       // Update daily limit
+      console.log("Updating daily limit...");
       if (limitDoc.exists) {
         transaction.update(limitRef, {
           totalRewarded: admin.firestore.FieldValue.increment(amount),
@@ -137,34 +186,49 @@ const rewardPost = async (req: any, res: any) => {
         });
       }
 
-      // Update creator level
-      const updatedStats = await transaction.get(statsRef);
-      const newTotalPoints = updatedStats.data()?.totalRewardPoints || 0;
-      const newLevel = calculateLevel(newTotalPoints);
-      transaction.update(statsRef, { level: newLevel });
+      console.log("Transaction writes complete");
     });
+
+    console.log("Transaction committed successfully");
+    console.log("=== REWARD POST SUCCESS ===");
 
     res.json({
       success: true,
       pointsAwarded: calculation.pointsAwarded,
       platformFee: calculation.platformFee,
     });
-  } catch (error) {
-    console.error('Reward post error:', error);
-    res.status(500).json({ error: 'Failed to reward post' });
+  } catch (error: any) {
+    console.error("=== REWARD POST ERROR ===");
+    console.error("Error:", error);
+    console.error("Error message:", error.message);
+    console.error("Error stack:", error.stack);
+
+    // Try to refund if wallet was deducted
+    try {
+      console.log("Attempting wallet refund...");
+      await creditWallet(senderId, amount);
+      console.log("Wallet refunded");
+    } catch (refundError) {
+      console.error("Failed to refund wallet:", refundError);
+    }
+
+    res.status(500).json({
+      error: "Failed to reward post",
+      message: error.message,
+    });
   }
 };
 
 const convertRewardPoints = async (req: any, res: any) => {
   try {
     // const userId = req.user?.uid;
-    
+
     const { amount } = req.body; // Amount of points to convert
 
     const userId = await checkAuth(req); // Verify auth
 
     if (!userId || !amount) {
-      return res.status(400).json({ error: 'Missing required fields' });
+      return res.status(400).json({ error: "Missing required fields" });
     }
 
     if (amount < MIN_CONVERSION_POINTS) {
@@ -173,24 +237,24 @@ const convertRewardPoints = async (req: any, res: any) => {
       });
     }
 
-    const statsRef = db.collection('creatorStats').doc(userId);
+    const statsRef = db.collection("creatorStats").doc(userId);
     const statsDoc = await statsRef.get();
 
     if (!statsDoc.exists) {
-      return res.status(404).json({ error: 'Creator stats not found' });
+      return res.status(404).json({ error: "Creator stats not found" });
     }
 
     const stats = statsDoc.data();
 
     if (!stats?.isKycVerified) {
       return res.status(403).json({
-        error: 'KYC verification required to convert reward points',
+        error: "KYC verification required to convert reward points",
       });
     }
 
     if (stats.totalRewardPoints < amount) {
       return res.status(400).json({
-        error: 'Insufficient reward points',
+        error: "Insufficient reward points",
         available: stats.totalRewardPoints,
       });
     }
@@ -208,7 +272,7 @@ const convertRewardPoints = async (req: any, res: any) => {
       await creditWallet(userId, amount);
 
       // Log transaction
-      const transactionRef = db.collection('rewardTransactions').doc();
+      const transactionRef = db.collection("rewardTransactions").doc();
       transaction.set(transactionRef, {
         transactionId: transactionRef.id,
         senderId: userId,
@@ -217,8 +281,8 @@ const convertRewardPoints = async (req: any, res: any) => {
         amount,
         platformFee: 0,
         pointsAwarded: 0,
-        type: 'conversion',
-        status: 'completed',
+        type: "conversion",
+        status: "completed",
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
     });
@@ -229,8 +293,8 @@ const convertRewardPoints = async (req: any, res: any) => {
       message: `₦${amount.toLocaleString()} added to your wallet`,
     });
   } catch (error) {
-    console.error('Convert points error:', error);
-    res.status(500).json({ error: 'Failed to convert reward points' });
+    console.error("Convert points error:", error);
+    res.status(500).json({ error: "Failed to convert reward points" });
   }
 };
 
@@ -241,38 +305,38 @@ const boostPost = async (req: any, res: any) => {
     const { postId } = req.body;
 
     if (!userId || !postId) {
-      return res.status(400).json({ error: 'Missing required fields' });
+      return res.status(400).json({ error: "Missing required fields" });
     }
 
-    const postRef = db.collection('posts').doc(postId);
+    const postRef = db.collection("posts").doc(postId);
     const postDoc = await postRef.get();
 
     if (!postDoc.exists) {
-      return res.status(404).json({ error: 'Post not found' });
+      return res.status(404).json({ error: "Post not found" });
     }
 
     const postData = postDoc.data();
 
     if (postData?.userId !== userId) {
-      return res.status(403).json({ error: 'Can only boost your own posts' });
+      return res.status(403).json({ error: "Can only boost your own posts" });
     }
 
     if (postData?.isBoosted) {
-      return res.status(400).json({ error: 'Post is already boosted' });
+      return res.status(400).json({ error: "Post is already boosted" });
     }
 
     // Check wallet balance
     const balance = await getWalletBalance(userId);
     if (balance < BOOST_COST) {
       return res.status(400).json({
-        error: 'Insufficient balance',
+        error: "Insufficient balance",
         required: BOOST_COST,
         available: balance,
       });
     }
 
     const boostExpiresAt = admin.firestore.Timestamp.fromDate(
-      new Date(Date.now() + BOOST_DURATION_HOURS * 60 * 60 * 1000)
+      new Date(Date.now() + BOOST_DURATION_HOURS * 60 * 60 * 1000),
     );
 
     await db.runTransaction(async (transaction) => {
@@ -286,7 +350,7 @@ const boostPost = async (req: any, res: any) => {
       });
 
       // Log transaction
-      const transactionRef = db.collection('rewardTransactions').doc();
+      const transactionRef = db.collection("rewardTransactions").doc();
       transaction.set(transactionRef, {
         transactionId: transactionRef.id,
         senderId: userId,
@@ -295,8 +359,8 @@ const boostPost = async (req: any, res: any) => {
         amount: BOOST_COST,
         platformFee: BOOST_COST,
         pointsAwarded: 0,
-        type: 'boost',
-        status: 'completed',
+        type: "boost",
+        status: "completed",
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
     });
@@ -307,8 +371,8 @@ const boostPost = async (req: any, res: any) => {
       message: `Post boosted for ${BOOST_DURATION_HOURS} hours`,
     });
   } catch (error) {
-    console.error('Boost post error:', error);
-    res.status(500).json({ error: 'Failed to boost post' });
+    console.error("Boost post error:", error);
+    res.status(500).json({ error: "Failed to boost post" });
   }
 };
 
@@ -317,10 +381,10 @@ const getCreatorStats = async (req: any, res: any) => {
     const userId = req.user?.uid;
 
     if (!userId) {
-      return res.status(401).json({ error: 'Unauthorized' });
+      return res.status(401).json({ error: "Unauthorized" });
     }
 
-    const statsDoc = await db.collection('creatorStats').doc(userId).get();
+    const statsDoc = await db.collection("creatorStats").doc(userId).get();
 
     if (!statsDoc.exists) {
       return res.json({
@@ -350,8 +414,8 @@ const getCreatorStats = async (req: any, res: any) => {
       },
     });
   } catch (error) {
-    console.error('Get creator stats error:', error);
-    res.status(500).json({ error: 'Failed to fetch creator stats' });
+    console.error("Get creator stats error:", error);
+    res.status(500).json({ error: "Failed to fetch creator stats" });
   }
 };
 

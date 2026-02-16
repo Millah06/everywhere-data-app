@@ -16,11 +16,73 @@ export const getWalletBalance = async (userId: string) => {
   return userSnap.data()?.wallet?.fiat?.availableBalance ?? 0;
 };
 
-
 /**
- * Credit user's available balance
+ * Credit user's available balance (NO TRANSACTION - for use inside transactions)
  */
 export const creditWallet = async (
+  userId: string,
+  amount: number
+) => {
+  if (amount <= 0) {
+    throw new Error('Amount must be greater than zero');
+  }
+
+  const userRef = db.collection('users').doc(userId);
+  const userSnap = await userRef.get();
+
+  if (!userSnap.exists) {
+    throw new Error('User not found');
+  }
+
+  const currentBalance = userSnap.data()?.wallet?.fiat?.availableBalance ?? 0;
+  const updatedBalance = currentBalance + amount;
+
+  await userRef.update({
+    'wallet.fiat.availableBalance': updatedBalance,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  return updatedBalance;
+};
+
+/**
+ * Deduct from user's available balance (NO TRANSACTION - for use inside transactions)
+ */
+export const deductWallet = async (
+  userId: string,
+  amount: number
+) => {
+  if (amount <= 0) {
+    throw new Error('Amount must be greater than zero');
+  }
+
+  const userRef = db.collection('users').doc(userId);
+  const userSnap = await userRef.get();
+
+  if (!userSnap.exists) {
+    throw new Error('User not found');
+  }
+
+  const currentBalance = userSnap.data()?.wallet?.fiat?.availableBalance ?? 0;
+
+  if (currentBalance < amount) {
+    throw new Error('Insufficient balance');
+  }
+
+  const updatedBalance = currentBalance - amount;
+
+  await userRef.update({
+    'wallet.fiat.availableBalance': updatedBalance,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  return updatedBalance;
+};
+
+/**
+ * TRANSACTIONAL versions for standalone use (when not inside another transaction)
+ */
+export const creditWalletTransactional = async (
   userId: string,
   amount: number
 ) => {
@@ -37,9 +99,7 @@ export const creditWallet = async (
       throw new Error('User not found');
     }
 
-    const currentBalance =
-      userSnap.data()?.wallet?.fiat?.availableBalance ?? 0;
-
+    const currentBalance = userSnap.data()?.wallet?.fiat?.availableBalance ?? 0;
     const updatedBalance = currentBalance + amount;
 
     transaction.update(userRef, {
@@ -53,11 +113,7 @@ export const creditWallet = async (
   return newBalance;
 };
 
-
-/**
- * Deduct from user's available balance
- */
-export const deductWallet = async (
+export const deductWalletTransactional = async (
   userId: string,
   amount: number
 ) => {
@@ -74,8 +130,7 @@ export const deductWallet = async (
       throw new Error('User not found');
     }
 
-    const currentBalance =
-      userSnap.data()?.wallet?.fiat?.availableBalance ?? 0;
+    const currentBalance = userSnap.data()?.wallet?.fiat?.availableBalance ?? 0;
 
     if (currentBalance < amount) {
       throw new Error('Insufficient balance');
