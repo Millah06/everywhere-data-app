@@ -14,7 +14,8 @@ import { checkAuth } from '../webhook/utils/auth';
 const db = admin.firestore();
 
 // Assume wallet helpers exist
-const { deductWallet, creditWallet, getWalletBalance } = require('../helpers/walletHelper');
+import { creditWallet, deductWallet, getWalletBalance } from '../helpers/walletHelper';
+
 
 const rewardPost = async (req: any, res: any) => {
   try {
