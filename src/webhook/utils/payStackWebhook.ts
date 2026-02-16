@@ -49,6 +49,7 @@ const paystackWebhook = async (req: Request, res: Response): Promise<void> => {
         const userRef = userDoc.ref;
         const currentWallet = userDoc.data()?.balance || 0;
         const notificationToken = userDoc.data().notificationToken;
+        const userId = userDoc.id;
 
         // ✅ Update wallet balance
         await userRef.update({
@@ -71,21 +72,25 @@ const paystackWebhook = async (req: Request, res: Response): Promise<void> => {
           type: "credit",
           method: "Paystack VA",
           description: `Wallet funding via ${data.authorization.bank}`,
-          timestamp: admin.firestore.FieldValue.serverTimestamp()
+          timestamp: admin.firestore.FieldValue.serverTimestamp(),
         })
 
         // ✅ Add transaction
         await userRef.collection("transactions").add({
+          userId: userId,
           amount,
           type: "credit",
+          metaData: {},
           method: "Paystack VA",
           description: `Wallet funding via ${data.authorization.bank}`,
-          timestamp: admin.firestore.FieldValue.serverTimestamp()
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          status: "success",
         });
       }
     }
 
     res.sendStatus(200);
+
   } catch (error: any) {
     console.error("Webhook error:", error.message);
     res.sendStatus(200);

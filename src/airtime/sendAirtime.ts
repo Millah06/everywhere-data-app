@@ -36,7 +36,11 @@ const sendAirtimeSecure = async (req: any, res: any) => {
     }
 
     const userRef = admin.firestore().collection("users").doc(uid);
-    const bonusDoc = await admin.firestore().collection("bonuses ").doc("reward").get();
+    const bonusDoc = await admin
+      .firestore()
+      .collection("bonuses ")
+      .doc("reward")
+      .get();
 
     // Begin Firestore transaction
     await admin.firestore().runTransaction(async (t) => {
@@ -65,7 +69,8 @@ const sendAirtimeSecure = async (req: any, res: any) => {
 
       // Lock the funds and create transaction doc
       t.update(userRef, {
-        "wallet.fiat.availableBalance": wallet.availableBalance - finalAmountToPay,
+        "wallet.fiat.availableBalance":
+          wallet.availableBalance - finalAmountToPay,
         "wallet.fiat.lockedBalance": wallet.lockedBalance + finalAmountToPay,
       });
 
@@ -87,39 +92,34 @@ const sendAirtimeSecure = async (req: any, res: any) => {
       });
     });
 
-     // Call third-party vendor
+    // Call third-party vendor
     let vendorResponse;
     try {
-
       const response = await axios.post(
-      "https://vtpass.com/api/pay",
-      {
-        request_id: requestID,
-        serviceID: network,
-        amount,
-        phone: phoneNumber,
-      },
-      {
-        headers: {
-          "api-key": process.env.VTPASS_API_KEY,
-          "secret-key": process.env.VTPASS_SECRET_KEY,
+        "https://vtpass.com/api/pay",
+        {
+          request_id: requestID,
+          serviceID: network,
+          amount,
+          phone: phoneNumber,
         },
-        timeout: 15000, // 15 seconds timeout
-      }
-    );
+        {
+          headers: {
+            "api-key": process.env.VTPASS_API_KEY,
+            "secret-key": process.env.VTPASS_SECRET_KEY,
+          },
+          timeout: 15000, // 15 seconds timeout
+        },
+      );
 
-    vendorResponse = response.data;
-
+      vendorResponse = response.data;
     } catch (err: any) {
-       vendorResponse = { error: err.message, };
+      vendorResponse = { error: err.message };
     }
-   
 
     const transactionStatus = vendorResponse.content?.transactions?.status;
 
     console.log("Vendor response:", vendorResponse);
-
-    
 
     // Final Firestore transaction to update locked balance and status
     await admin.firestore().runTransaction(async (t) => {
@@ -144,13 +144,17 @@ const sendAirtimeSecure = async (req: any, res: any) => {
           vendorResponse,
         });
 
-        responsePayload = { status: true, transaction_id: humanRef, 
-          date: transactionData?.updatedAt };
+        responsePayload = {
+          status: true,
+          transaction_id: humanRef,
+          date: transactionData?.updatedAt,
+        };
       } else {
         // Refund locked funds, no reward
         t.update(userRef, {
           "wallet.fiat.lockedBalance": wallet.lockedBalance - lockedAmount,
-          "wallet.fiat.availableBalance": wallet.availableBalance + lockedAmount,
+          "wallet.fiat.availableBalance":
+            wallet.availableBalance + lockedAmount,
           "wallet.fiat.rewardBalance": rewardBalance,
         });
 
@@ -165,7 +169,6 @@ const sendAirtimeSecure = async (req: any, res: any) => {
     });
 
     return res.json(responsePayload);
-
   } catch (error: any) {
     console.error(
       "sendAirtimeSecure error:",
@@ -173,14 +176,17 @@ const sendAirtimeSecure = async (req: any, res: any) => {
       "RequestID:",
       req.body.requestID,
       "UserID:",
-      req.body.uid
+      req.body.uid,
     );
 
     // Optional: unlock funds if any transaction exists but got stuck
     try {
-      const uid = await checkAuth(req)
+      const uid = await checkAuth(req);
       if (req.body.clientRequestId) {
-        const txRef = admin.firestore().collection("transactions").doc(req.body.clientRequestId);
+        const txRef = admin
+          .firestore()
+          .collection("transactions")
+          .doc(req.body.clientRequestId);
         const txDoc = await txRef.get();
         if (txDoc.exists && txDoc.data()?.status === "processing") {
           const userRef = admin.firestore().collection("users").doc(uid);
@@ -190,7 +196,8 @@ const sendAirtimeSecure = async (req: any, res: any) => {
             const lockedAmount = txDoc.data()?.finalAmount || 0;
             t.update(userRef, {
               "wallet.fiat.lockedBalance": wallet.lockedBalance - lockedAmount,
-              "wallet.fiat.availableBalance": wallet.availableBalance + lockedAmount,
+              "wallet.fiat.availableBalance":
+                wallet.availableBalance + lockedAmount,
             });
             t.update(txRef, {
               status: "failed",

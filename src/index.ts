@@ -16,6 +16,12 @@ import jambServices from "./exams/jambServices";
 import createVA from "./wallet/createVa";
 import paystackWebhook from "./webhook/utils/payStackWebhook";
 import transactionStatus from "./wallet/transactionStaatus";
+ 
+
+// Import social controllers
+import socialController from "./controllers/socialController";
+import rewardController from "./controllers/rewardController";
+import { authMiddleware } from "./middleware/auth"; // Your existing auth middleware
 
 dotenv.config();
 
@@ -46,8 +52,19 @@ app.post("/webhook/paystack", paystackWebhook);
 app.get("/exams/jambServices", jambServices);
 app.get('/transactions/status/:transactionId', transactionStatus);
 
+// Social Feed routes
+app.post('/social/posts', authMiddleware, socialController.createPost);
+app.get('/social/feed', authMiddleware, socialController.getFeed);
+app.post('/social/like', authMiddleware, socialController.likePost);
+app.post('/social/comment', authMiddleware, socialController.commentOnPost);
+app.get('/social/posts/:postId/comments', authMiddleware, socialController.getComments);
+app.get('/social/leaderboard', authMiddleware, socialController.getTopEarners);
 
-// add more like: app.post("/wallet/fund", handleFundWallet)
+// Reward routes
+app.post('/rewards/reward', authMiddleware, rewardController.rewardPost);
+app.post('/rewards/convert', authMiddleware, rewardController.convertRewardPoints);
+app.post('/rewards/boost', authMiddleware, rewardController.boostPost);
+app.get('/rewards/stats', authMiddleware, rewardController.getCreatorStats);
 
 const PORT = process.env.PORT || 8080;
 
