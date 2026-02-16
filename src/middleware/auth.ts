@@ -12,8 +12,8 @@ declare global {
 }
 
 export const authMiddleware = async (
-  req: Request,
-  res: Response,
+  req: any,
+  res: any,
   next: NextFunction
 ) => {
   try {

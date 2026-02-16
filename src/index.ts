@@ -21,7 +21,8 @@ import transactionStatus from "./wallet/transactionStaatus";
 // Import social controllers
 import socialController from "./controllers/socialController";
 import rewardController from "./controllers/rewardController";
-import { authMiddleware } from "./middleware/auth"; // Your existing auth middleware
+import { authMiddleware } from "./middleware/auth";
+   
 
 dotenv.config();
 
