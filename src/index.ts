@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import multer from 'multer';
 import * as admin from "firebase-admin";
 
 import sendAirtimeSecure from "./airtime/sendAirtime";
@@ -22,6 +23,7 @@ import transactionStatus from "./wallet/transactionStaatus";
 import socialController from "./controllers/socialController";
 import rewardController from "./controllers/rewardController";
 import { authMiddleware } from "./middleware/auth";
+import { uploadPostImage } from "./cludfareServices/uploadImage";
    
 
 dotenv.config();
@@ -39,6 +41,11 @@ if (!admin.apps.length) {
 const app = express();
 app.use(cors({origin: true}));
 app.use(express.json());
+ 
+// Congigure multer for file uploads
+
+const upload = multer({ storage: multer.memoryStorage(), 
+  limits: { fileSize: 10 * 1024 * 1024 } }); // 10MB limit
 
 app.post("/airtime/sendAirtime", sendAirtimeSecure);
 app.post("/airtime/sendRecharge", sendRechargeCard);
@@ -60,6 +67,7 @@ app.post('/social/like', authMiddleware, socialController.likePost);
 app.post('/social/comment', authMiddleware, socialController.commentOnPost);
 app.get('/social/posts/:postId/comments', authMiddleware, socialController.getComments);
 app.get('/social/leaderboard', authMiddleware, socialController.getTopEarners);
+app.post('/social/upload', authMiddleware, upload.single('image'), uploadPostImage);
 
 // Reward routes
 app.post('/rewards/reward', authMiddleware, rewardController.rewardPost);
