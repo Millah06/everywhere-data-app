@@ -40,11 +40,11 @@ export const uploadPostImage = async (req: any, res: any) => {
       return res.status(400).json({ error: 'Image size exceeds 10MB limit' });
     }
 
-    // Validate file type
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'image/webp'];
-    if (!allowedTypes.includes(req.file.mimetype)) {
-      return res.status(400).json({ error: 'Invalid file type. Only JPEG, PNG, and WebP allowed' });
-    }
+    // // Validate file type
+    // const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'image/webp'];
+    // if (!allowedTypes.includes(req.file.mimetype)) {
+    //   return res.status(400).json({ error: 'Invalid file type. Only JPEG, PNG, and WebP allowed' });
+    // }
 
     // Compress image (optional but good)
     let imageBuffer = req.file.buffer;
