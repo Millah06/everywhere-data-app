@@ -2,58 +2,59 @@
 
 import admin from 'firebase-admin';
 import { checkAuth } from '../webhook/utils/auth';
+import { calculateAlgorithmScore } from '../utils/algorithmService';
 
 const db = admin.firestore();
 
-const createPost = async (req: any, res: any) => {
-  try {
-    const userId = await checkAuth(req); // Verify auth
-    // const userId = req.user?.uid;
-    const { text, imageUrl } = req.body;
+// const createPost = async (req: any, res: any) => {
+//   try {
+//     const userId = await checkAuth(req); // Verify auth
+//     // const userId = req.user?.uid;
+//     const { text, imageUrl } = req.body;
 
-    if (!userId) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
+//     if (!userId) {
+//       return res.status(401).json({ error: 'Unauthorized' });
+//     }
 
-    if (!text || text.trim().length === 0) {
-      return res.status(400).json({ error: 'Post text is required' });
-    }
+//     if (!text || text.trim().length === 0) {
+//       return res.status(400).json({ error: 'Post text is required' });
+//     }
 
-    if (text.length > 500) {
-      return res.status(400).json({ error: 'Post text exceeds 500 characters' });
-    }
+//     if (text.length > 500) {
+//       return res.status(400).json({ error: 'Post text exceeds 500 characters' });
+//     }
 
-    // Get user info
-    const userDoc = await db.collection('users').doc(userId).get();
-    const userData = userDoc.data();
+//     // Get user info
+//     const userDoc = await db.collection('users').doc(userId).get();
+//     const userData = userDoc.data();
 
-    const postData = {
-      userId,
-      userName: userData?.displayName || 'Anonymous',
-      userAvatar: userData?.photoURL || null,
-      text: text.trim(),
-      imageUrl: imageUrl || null,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      likeCount: 0,
-      commentCount: 0,
-      rewardCount: 0,
-      rewardPointsTotal: 0,
-      isBoosted: false,
-      boostExpiresAt: null,
-    };
+//     const postData = {
+//       userId,
+//       userName: userData?.displayName || 'Anonymous',
+//       userAvatar: userData?.photoURL || null,
+//       text: text.trim(),
+//       imageUrl: imageUrl || null,
+//       createdAt: admin.firestore.FieldValue.serverTimestamp(),
+//       likeCount: 0,
+//       commentCount: 0,
+//       rewardCount: 0,
+//       rewardPointsTotal: 0,
+//       isBoosted: false,
+//       boostExpiresAt: null,
+//     };
 
-    const postRef = await db.collection('posts').add(postData);
+//     const postRef = await db.collection('posts').add(postData);
 
-    res.status(201).json({
-      success: true,
-      postId: postRef.id,
-      post: { ...postData, postId: postRef.id },
-    });
-  } catch (error) {
-    console.error('Create post error:', error);
-    res.status(500).json({ error: 'Failed to create post' });
-  }
-};
+//     res.status(201).json({
+//       success: true,
+//       postId: postRef.id,
+//       post: { ...postData, postId: postRef.id },
+//     });
+//   } catch (error) {
+//     console.error('Create post error:', error);
+//     res.status(500).json({ error: 'Failed to create post' });
+//   }
+// };
 
 const getFeed = async (req: any, res: any) => {
   try {
