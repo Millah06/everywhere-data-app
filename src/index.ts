@@ -75,6 +75,21 @@ app.post('/rewards/convert', authMiddleware, rewardController.convertRewardPoint
 app.post('/rewards/boost', authMiddleware, rewardController.boostPost);
 app.get('/rewards/stats', authMiddleware, rewardController.getCreatorStats);
 
+// Add these new routes to your existing index.ts
+
+// Feed routes
+app.get('/social/feed/foryou', authMiddleware, socialController.getForYouFeed);
+app.get('/social/feed/following', authMiddleware, socialController.getFollowingFeed);
+app.post('/social/posts/:postId/view', authMiddleware, socialController.incrementPostView);
+
+// Follow routes
+app.post('/social/follow', authMiddleware, socialController.followUser);
+app.post('/social/unfollow', authMiddleware, socialController.unfollowUser);
+
+// Profile routes
+app.get('/social/profile/:userId', authMiddleware, socialController.getUserProfile);
+app.get('/social/profile/:userId/posts', authMiddleware, socialController.getUserPosts);
+
 const PORT = process.env.PORT || 8080;
 
 app.listen(PORT, () => {

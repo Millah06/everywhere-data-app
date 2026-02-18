@@ -256,11 +256,432 @@ const getTopEarners = async (req: any, res: any) => {
   }
 };
 
+// backend/controllers/socialController.ts - ADD THESE FUNCTIONS
+
+const getForYouFeed = async (req: any, res: any) => {
+  try {
+    const userId = req.user?.uid;
+    const { limit = 20, lastScore, lastPostId } = req.query;
+    const limitNum = Math.min(parseInt(limit as string), 50);
+
+    let query = db
+      .collection('posts')
+      .orderBy('algorithmScore', 'desc')
+      .orderBy('createdAt', 'desc')
+      .limit(limitNum);
+
+    if (lastScore && lastPostId) {
+      const lastDoc = await db.collection('posts').doc(lastPostId as string).get();
+      if (lastDoc.exists) {
+        query = query.startAfter(lastDoc);
+      }
+    }
+
+    const snapshot = await query.get();
+    const posts = await Promise.all(
+      snapshot.docs.map(async (doc) => {
+        const data = doc.data();
+        
+        // Check if user is following post author
+        let isFollowing = false;
+        if (userId && data.userId !== userId) {
+          const followDoc = await db
+            .collection('follows')
+            .where('followerId', '==', userId)
+            .where('followingId', '==', data.userId)
+            .limit(1)
+            .get();
+          isFollowing = !followDoc.empty;
+        }
+
+        return {
+          postId: doc.id,
+          userId: data.userId || '',
+          userName: data.userName || 'Anonymous',
+          userAvatar: data.userAvatar || null,
+          text: data.text || '',
+          imageUrl: data.imageUrl || null,
+          hashtags: data.hashtags || [],
+          createdAt: data.createdAt?.toMillis() || Date.now(),
+          likeCount: data.likeCount || 0,
+          commentCount: data.commentCount || 0,
+          rewardCount: data.rewardCount || 0,
+          rewardPointsTotal: data.rewardPointsTotal || 0,
+          viewCount: data.viewCount || 0,
+          isBoosted: data.isBoosted || false,
+          boostExpiresAt: data.boostExpiresAt?.toMillis() || null,
+          algorithmScore: data.algorithmScore || 0,
+          isFollowing,
+        };
+      })
+    );
+
+    res.json({
+      success: true,
+      posts,
+      hasMore: posts.length === limitNum,
+    });
+  } catch (error: any) {
+    console.error('Get For You feed error:', error);
+    res.status(500).json({ error: 'Failed to fetch feed', message: error.message });
+  }
+};
+
+const getFollowingFeed = async (req: any, res: any) => {
+  try {
+    const userId = req.user?.uid;
+    const { limit = 20, lastPostId } = req.query;
+    const limitNum = Math.min(parseInt(limit as string), 50);
+
+    // Get users that current user follows
+    const followingSnapshot = await db
+      .collection('follows')
+      .where('followerId', '==', userId)
+      .get();
+
+    const followingIds = followingSnapshot.docs.map(doc => doc.data().followingId);
+
+    if (followingIds.length === 0) {
+      return res.json({ success: true, posts: [], hasMore: false });
+    }
+
+    // Get posts from followed users (Firestore 'in' supports max 10 values)
+    // For production, implement pagination properly
+    const chunks = [];
+    for (let i = 0; i < followingIds.length; i += 10) {
+      chunks.push(followingIds.slice(i, i + 10));
+    }
+
+    let allPosts: any[] = [];
+    
+    for (const chunk of chunks) {
+      let query = db
+        .collection('posts')
+        .where('userId', 'in', chunk)
+        .orderBy('createdAt', 'desc')
+        .limit(limitNum);
+
+      if (lastPostId) {
+        const lastDoc = await db.collection('posts').doc(lastPostId as string).get();
+        if (lastDoc.exists) {
+          query = query.startAfter(lastDoc);
+        }
+      }
+
+      const snapshot = await query.get();
+      const posts = snapshot.docs.map((doc) => {
+        const data = doc.data();
+        return {
+          postId: doc.id,
+          userId: data.userId || '',
+          userName: data.userName || 'Anonymous',
+          userAvatar: data.userAvatar || null,
+          text: data.text || '',
+          imageUrl: data.imageUrl || null,
+          hashtags: data.hashtags || [],
+          createdAt: data.createdAt?.toMillis() || Date.now(),
+          likeCount: data.likeCount || 0,
+          commentCount: data.commentCount || 0,
+          rewardCount: data.rewardCount || 0,
+          rewardPointsTotal: data.rewardPointsTotal || 0,
+          viewCount: data.viewCount || 0,
+          isBoosted: data.isBoosted || false,
+          boostExpiresAt: data.boostExpiresAt?.toMillis() || null,
+          isFollowing: true, // All posts are from followed users
+        };
+      });
+
+      allPosts = allPosts.concat(posts);
+    }
+
+    // Sort by createdAt desc
+    allPosts.sort((a, b) => b.createdAt - a.createdAt);
+    allPosts = allPosts.slice(0, limitNum);
+
+    res.json({
+      success: true,
+      posts: allPosts,
+      hasMore: allPosts.length === limitNum,
+    });
+  } catch (error: any) {
+    console.error('Get Following feed error:', error);
+    res.status(500).json({ error: 'Failed to fetch following feed', message: error.message });
+  }
+};
+
+const followUser = async (req: any, res: any) => {
+  try {
+    const followerId = req.user?.uid;
+    const { userId: followingId } = req.body;
+
+    if (!followerId || !followingId) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    if (followerId === followingId) {
+      return res.status(400).json({ error: 'Cannot follow yourself' });
+    }
+
+    const followRef = db.collection('follows').doc();
+
+    await db.runTransaction(async (transaction) => {
+      // Check if already following
+      const existingFollow = await db
+        .collection('follows')
+        .where('followerId', '==', followerId)
+        .where('followingId', '==', followingId)
+        .limit(1)
+        .get();
+
+      if (!existingFollow.empty) {
+        throw new Error('Already following this user');
+      }
+
+      // Create follow
+      transaction.set(followRef, {
+        followId: followRef.id,
+        followerId,
+        followingId,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      // Update follower count
+      const followerProfileRef = db.collection('userProfiles').doc(followingId);
+      transaction.update(followerProfileRef, {
+        followerCount: admin.firestore.FieldValue.increment(1),
+      });
+
+      // Update following count
+      const followingProfileRef = db.collection('userProfiles').doc(followerId);
+      transaction.update(followingProfileRef, {
+        followingCount: admin.firestore.FieldValue.increment(1),
+      });
+    });
+
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Follow user error:', error);
+    res.status(500).json({ error: 'Failed to follow user', message: error.message });
+  }
+};
+
+const unfollowUser = async (req: any, res: any) => {
+  try {
+    const followerId = req.user?.uid;
+    const { userId: followingId } = req.body;
+
+    if (!followerId || !followingId) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    await db.runTransaction(async (transaction) => {
+      // Find follow document
+      const followSnapshot = await db
+        .collection('follows')
+        .where('followerId', '==', followerId)
+        .where('followingId', '==', followingId)
+        .limit(1)
+        .get();
+
+      if (followSnapshot.empty) {
+        throw new Error('Not following this user');
+      }
+
+      const followDoc = followSnapshot.docs[0];
+
+      // Delete follow
+      transaction.delete(followDoc.ref);
+
+      // Update follower count
+      const followerProfileRef = db.collection('userProfiles').doc(followingId);
+      transaction.update(followerProfileRef, {
+        followerCount: admin.firestore.FieldValue.increment(-1),
+      });
+
+      // Update following count
+      const followingProfileRef = db.collection('userProfiles').doc(followerId);
+      transaction.update(followingProfileRef, {
+        followingCount: admin.firestore.FieldValue.increment(-1),
+      });
+    });
+
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Unfollow user error:', error);
+    res.status(500).json({ error: 'Failed to unfollow user', message: error.message });
+  }
+};
+
+const incrementPostView = async (req: any, res: any) => {
+  try {
+    const { postId } = req.body;
+
+    if (!postId) {
+      return res.status(400).json({ error: 'Missing postId' });
+    }
+
+    const postRef = db.collection('posts').doc(postId);
+
+    await postRef.update({
+      viewCount: admin.firestore.FieldValue.increment(1),
+    });
+
+    // Recalculate algorithm score
+    const postDoc = await postRef.get();
+    if (postDoc.exists) {
+      const score = calculateAlgorithmScore(postDoc.data());
+      await postRef.update({ algorithmScore: score });
+    }
+
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Increment view error:', error);
+    res.status(500).json({ error: 'Failed to increment view' });
+  }
+};
+
+const getUserProfile = async (req: any, res: any) => {
+  try {
+    const { userId } = req.params;
+    const currentUserId = req.user?.uid;
+
+    const profileDoc = await db.collection('userProfiles').doc(userId).get();
+
+    if (!profileDoc.exists) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const profileData = profileDoc.data();
+
+    // Check if current user follows this user
+    let isFollowing = false;
+    if (currentUserId && currentUserId !== userId) {
+      const followDoc = await db
+        .collection('follows')
+        .where('followerId', '==', currentUserId)
+        .where('followingId', '==', userId)
+        .limit(1)
+        .get();
+      isFollowing = !followDoc.empty;
+    }
+
+    res.json({
+      success: true,
+      profile: {
+        userId,
+        ...profileData,
+        isFollowing,
+      },
+    });
+  } catch (error: any) {
+    console.error('Get user profile error:', error);
+    res.status(500).json({ error: 'Failed to fetch profile' });
+  }
+};
+
+const getUserPosts = async (req: any, res: any) => {
+  try {
+    const { userId } = req.params;
+    const { limit = 20 } = req.query;
+
+    const snapshot = await db
+      .collection('posts')
+      .where('userId', '==', userId)
+      .orderBy('createdAt', 'desc')
+      .limit(parseInt(limit as string))
+      .get();
+
+    const posts = snapshot.docs.map((doc) => {
+      const data = doc.data();
+      return {
+        postId: doc.id,
+        ...data,
+        createdAt: data.createdAt?.toMillis() || Date.now(),
+        boostExpiresAt: data.boostExpiresAt?.toMillis() || null,
+      };
+    });
+
+    res.json({ success: true, posts });
+  } catch (error: any) {
+    console.error('Get user posts error:', error);
+    res.status(500).json({ error: 'Failed to fetch posts' });
+  }
+};
+
+// Update createPost to extract hashtags
+const createPost = async (req: any, res: any) => {
+  try {
+    const userId = req.user?.uid;
+    const { text, imageUrl } = req.body;
+
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    if (!text || text.trim().length === 0) {
+      return res.status(400).json({ error: 'Post text is required' });
+    }
+
+    if (text.length > 500) {
+      return res.status(400).json({ error: 'Post text exceeds 500 characters' });
+    }
+
+    // Extract hashtags
+    const hashtagRegex = /#[\w]+/g;
+    const hashtags = (text.match(hashtagRegex) || []).map((tag: string) => tag.toLowerCase());
+
+    // Get user info
+    const userDoc = await db.collection('users').doc(userId).get();
+    const userData = userDoc.data();
+
+    const postData = {
+      userId,
+      userName: userData?.displayName || userData?.name || 'Anonymous',
+      userAvatar: userData?.photoURL || userData?.photoUrl || null,
+      text: text.trim(),
+      imageUrl: imageUrl || null,
+      hashtags,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      likeCount: 0,
+      commentCount: 0,
+      rewardCount: 0,
+      rewardPointsTotal: 0,
+      viewCount: 0,
+      isBoosted: false,
+      boostExpiresAt: null,
+      algorithmScore: 10, // Initial score for new posts
+    };
+
+    const postRef = await db.collection('posts').add(postData);
+
+    // Update user post count
+    await db.collection('userProfiles').doc(userId).update({
+      postCount: admin.firestore.FieldValue.increment(1),
+    });
+
+    res.status(201).json({
+      success: true,
+      postId: postRef.id,
+      post: { ...postData, postId: postRef.id, createdAt: Date.now() },
+    });
+  } catch (error: any) {
+    console.error('Create post error:', error);
+    res.status(500).json({ error: 'Failed to create post' });
+  }
+};
+
 export default {
   createPost,
-  getFeed,
+  getFeed, // Keep existing
+  getForYouFeed,
+  getFollowingFeed,
   likePost,
   commentOnPost,
   getComments,
   getTopEarners,
+  followUser,
+  unfollowUser,
+  incrementPostView,
+  getUserProfile,
+  getUserPosts,
 };
