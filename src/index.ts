@@ -24,6 +24,12 @@ import socialController from "./controllers/socialController";
 import rewardController from "./controllers/rewardController";
 import { authMiddleware } from "./middleware/auth";
 import { uploadPostImage } from "./cludfareServices/uploadImage";
+
+import viewController from './controllers/viewController';
+import reportController from './controllers/reportController';
+import repostController from './controllers/repostController';
+import downloadController from './controllers/downloadController';
+import badgeController from './controllers/badgeController';
    
 
 dotenv.config();
@@ -80,7 +86,7 @@ app.get('/rewards/stats', authMiddleware, rewardController.getCreatorStats);
 // Feed routes
 app.get('/social/feed/foryou', authMiddleware, socialController.getForYouFeed);
 app.get('/social/feed/following', authMiddleware, socialController.getFollowingFeed);
-app.post('/social/posts/:postId/view', authMiddleware, socialController.incrementPostView);
+app.post('/social/posts/:postId/view', authMiddleware, viewController.incrementView);
 
 // Follow routes
 app.post('/social/follow', authMiddleware, socialController.followUser);
@@ -89,6 +95,30 @@ app.post('/social/unfollow', authMiddleware, socialController.unfollowUser);
 // Profile routes
 app.get('/social/profile/:userId', authMiddleware, socialController.getUserProfile);
 app.get('/social/profile/:userId/posts', authMiddleware, socialController.getUserPosts);
+
+// Add to your existing index.ts
+
+
+
+// View routes
+app.post('/social/posts/view', authMiddleware, viewController.incrementView);
+
+// Report routes
+app.post('/social/reports', authMiddleware, reportController.reportPost);
+app.get('/social/reports', authMiddleware, reportController.getReports);
+app.post('/social/reports/review', authMiddleware, reportController.reviewReport);
+
+// Repost routes
+app.post('/social/repost', authMiddleware, repostController.repostPost);
+app.get('/social/posts/:postId/reposts', repostController.getRepostCount);
+
+// Download routes
+app.post('/social/posts/download', authMiddleware, downloadController.generatePostDownload);
+
+// Badge routes
+app.post('/admin/badges/award', authMiddleware, badgeController.awardBadge);
+app.post('/admin/badges/revoke', authMiddleware, badgeController.revokeBadge);
+app.get('/social/users/:userId/badges', badgeController.getUserBadges);
 
 const PORT = process.env.PORT || 8080;
 

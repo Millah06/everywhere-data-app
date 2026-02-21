@@ -513,33 +513,7 @@ const unfollowUser = async (req: any, res: any) => {
   }
 };
 
-const incrementPostView = async (req: any, res: any) => {
-  try {
-    const { postId } = req.body;
-
-    if (!postId) {
-      return res.status(400).json({ error: 'Missing postId' });
-    }
-
-    const postRef = db.collection('posts').doc(postId);
-
-    await postRef.update({
-      viewCount: admin.firestore.FieldValue.increment(1),
-    });
-
-    // Recalculate algorithm score
-    const postDoc = await postRef.get();
-    if (postDoc.exists) {
-      const score = calculateAlgorithmScore(postDoc.data());
-      await postRef.update({ algorithmScore: score });
-    }
-
-    res.json({ success: true });
-  } catch (error: any) {
-    console.error('Increment view error:', error);
-    res.status(500).json({ error: 'Failed to increment view' });
-  }
-};
+ 
 
 const getUserProfile = async (req: any, res: any) => {
   try {
@@ -682,7 +656,7 @@ export default {
   getTopEarners,
   followUser,
   unfollowUser,
-  incrementPostView,
+   
   getUserProfile,
   getUserPosts,
 };
