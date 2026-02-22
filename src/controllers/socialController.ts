@@ -723,6 +723,66 @@ const createPost = async (req: any, res: any) => {
   }
 };
 
+// backend/controllers/socialController.ts - ADD THIS FUNCTION
+
+const deletePost = async (req: any, res: any) => {
+  try {
+    const userId = req.user?.uid;
+    const { postId } = req.params;
+
+    console.log('🗑️ Delete request for post:', postId, 'by user:', userId);
+
+    if (!userId || !postId) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    const postRef = db.collection('posts').doc(postId);
+    const postDoc = await postRef.get();
+
+    if (!postDoc.exists) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+
+    const postData = postDoc.data();
+
+    // Only post owner can delete
+    if (postData?.userId !== userId) {
+      return res.status(403).json({ error: 'You can only delete your own posts' });
+    }
+
+    // Delete post and related data
+    await db.runTransaction(async (transaction) => {
+      // Delete the post
+      transaction.delete(postRef);
+
+      // Update user's post count
+      const userProfileRef = db.collection('userProfiles').doc(userId);
+      transaction.update(userProfileRef, {
+        postCount: admin.firestore.FieldValue.increment(-1),
+      });
+
+      // Note: Subcollections (likes, comments) won't be deleted automatically
+      // For production, you should use Cloud Functions to delete subcollections
+    });
+
+    // Delete subcollections (likes and comments) - do this after transaction
+    const likesSnapshot = await postRef.collection('likes').get();
+    const commentsSnapshot = await postRef.collection('comments').get();
+
+    const batch = db.batch();
+    likesSnapshot.docs.forEach((doc) => batch.delete(doc.ref));
+    commentsSnapshot.docs.forEach((doc) => batch.delete(doc.ref));
+    await batch.commit();
+
+    console.log('✅ Post deleted successfully');
+
+    res.json({ success: true, message: 'Post deleted successfully' });
+  } catch (error: any) {
+    console.error('❌ Delete post error:', error);
+    res.status(500).json({ error: 'Failed to delete post', message: error.message });
+  }
+};
+
 export default {
   createPost,
   getFeed, // Keep existing
@@ -737,4 +797,5 @@ export default {
    
   getUserProfile,
   getUserPosts,
+  deletePost,
 };

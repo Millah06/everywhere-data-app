@@ -75,6 +75,9 @@ app.get('/social/posts/:postId/comments', authMiddleware, socialController.getCo
 app.get('/social/leaderboard', authMiddleware, socialController.getTopEarners);
 app.post('/social/upload', authMiddleware, upload.single('image'), uploadPostImage);
 
+// backend/index.ts - ADD THIS ROUTE
+app.delete('/social/posts/:postId', authMiddleware, socialController.deletePost);
+
 // Reward routes
 app.post('/rewards/reward', authMiddleware, rewardController.rewardPost);
 app.post('/rewards/convert', authMiddleware, rewardController.convertRewardPoints);
