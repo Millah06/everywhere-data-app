@@ -60,7 +60,7 @@ const repostPost = async (req: any, res: any) => {
       isRepost: true,
       originalPostId: postId,
       originalUserName: originalPost?.userName || 'Unknown',
-      score: 10, // Initial score
+      algorithmScore: 10, // Initial score
     };
 
     await repostRef.set(repostData);

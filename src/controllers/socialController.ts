@@ -259,11 +259,15 @@ const getTopEarners = async (req: any, res: any) => {
 
 // backend/controllers/socialController.ts - ADD THESE FUNCTIONS
 
+// backend/controllers/socialController.ts - UPDATE BOTH FEED ENDPOINTS
+
 const getForYouFeed = async (req: any, res: any) => {
   try {
     const userId = req.user?.uid;
     const { limit = 20, lastScore, lastPostId } = req.query;
     const limitNum = Math.min(parseInt(limit as string), 50);
+
+    console.log('📥 Getting For You feed for user:', userId);
 
     let query = db
       .collection('posts')
@@ -279,6 +283,9 @@ const getForYouFeed = async (req: any, res: any) => {
     }
 
     const snapshot = await query.get();
+
+    console.log('✅ Found', snapshot.size, 'posts');
+
     const posts = await Promise.all(
       snapshot.docs.map(async (doc) => {
         const data = doc.data();
@@ -294,6 +301,14 @@ const getForYouFeed = async (req: any, res: any) => {
             .get();
           isFollowing = !followDoc.empty;
         }
+
+        // Get repost count
+        const repostSnapshot = await db
+          .collection('reposts')
+          .where('originalPostId', '==', doc.id)
+          .get();
+        
+        const repostCount = repostSnapshot.size;
 
         return {
           postId: doc.id,
@@ -312,7 +327,11 @@ const getForYouFeed = async (req: any, res: any) => {
           isBoosted: data.isBoosted || false,
           boostExpiresAt: data.boostExpiresAt?.toMillis() || null,
           algorithmScore: data.algorithmScore || 0,
+          isRepost: data.isRepost || false, // IMPORTANT: Include this
+          originalPostId: data.originalPostId || null, // IMPORTANT: Include this
+          originalUserName: data.originalUserName || null, // IMPORTANT: Include this
           isFollowing,
+          repostCount,
         };
       })
     );
@@ -323,7 +342,7 @@ const getForYouFeed = async (req: any, res: any) => {
       hasMore: posts.length === limitNum,
     });
   } catch (error: any) {
-    console.error('Get For You feed error:', error);
+    console.error('❌ Get For You feed error:', error);
     res.status(500).json({ error: 'Failed to fetch feed', message: error.message });
   }
 };
@@ -334,6 +353,8 @@ const getFollowingFeed = async (req: any, res: any) => {
     const { limit = 20, lastPostId } = req.query;
     const limitNum = Math.min(parseInt(limit as string), 50);
 
+    console.log('📥 Getting Following feed for user:', userId);
+
     // Get users that current user follows
     const followingSnapshot = await db
       .collection('follows')
@@ -342,12 +363,13 @@ const getFollowingFeed = async (req: any, res: any) => {
 
     const followingIds = followingSnapshot.docs.map(doc => doc.data().followingId);
 
+    console.log('👥 Following', followingIds.length, 'users');
+
     if (followingIds.length === 0) {
       return res.json({ success: true, posts: [], hasMore: false });
     }
 
-    // Get posts from followed users (Firestore 'in' supports max 10 values)
-    // For production, implement pagination properly
+    // Get posts from followed users
     const chunks = [];
     for (let i = 0; i < followingIds.length; i += 10) {
       chunks.push(followingIds.slice(i, i + 10));
@@ -370,27 +392,43 @@ const getFollowingFeed = async (req: any, res: any) => {
       }
 
       const snapshot = await query.get();
-      const posts = snapshot.docs.map((doc) => {
-        const data = doc.data();
-        return {
-          postId: doc.id,
-          userId: data.userId || '',
-          userName: data.userName || 'Anonymous',
-          userAvatar: data.userAvatar || null,
-          text: data.text || '',
-          imageUrl: data.imageUrl || null,
-          hashtags: data.hashtags || [],
-          createdAt: data.createdAt?.toMillis() || Date.now(),
-          likeCount: data.likeCount || 0,
-          commentCount: data.commentCount || 0,
-          rewardCount: data.rewardCount || 0,
-          rewardPointsTotal: data.rewardPointsTotal || 0,
-          viewCount: data.viewCount || 0,
-          isBoosted: data.isBoosted || false,
-          boostExpiresAt: data.boostExpiresAt?.toMillis() || null,
-          isFollowing: true, // All posts are from followed users
-        };
-      });
+      
+      const posts = await Promise.all(
+        snapshot.docs.map(async (doc) => {
+          const data = doc.data();
+          
+          // Get repost count
+          const repostSnapshot = await db
+            .collection('reposts')
+            .where('originalPostId', '==', doc.id)
+            .get();
+          
+          const repostCount = repostSnapshot.size;
+
+          return {
+            postId: doc.id,
+            userId: data.userId || '',
+            userName: data.userName || 'Anonymous',
+            userAvatar: data.userAvatar || null,
+            text: data.text || '',
+            imageUrl: data.imageUrl || null,
+            hashtags: data.hashtags || [],
+            createdAt: data.createdAt?.toMillis() || Date.now(),
+            likeCount: data.likeCount || 0,
+            commentCount: data.commentCount || 0,
+            rewardCount: data.rewardCount || 0,
+            rewardPointsTotal: data.rewardPointsTotal || 0,
+            viewCount: data.viewCount || 0,
+            isBoosted: data.isBoosted || false,
+            boostExpiresAt: data.boostExpiresAt?.toMillis() || null,
+            isRepost: data.isRepost || false, // IMPORTANT: Include this
+            originalPostId: data.originalPostId || null, // IMPORTANT: Include this
+            originalUserName: data.originalUserName || null, // IMPORTANT: Include this
+            isFollowing: true, // All posts are from followed users
+            repostCount,
+          };
+        })
+      );
 
       allPosts = allPosts.concat(posts);
     }
@@ -399,13 +437,15 @@ const getFollowingFeed = async (req: any, res: any) => {
     allPosts.sort((a, b) => b.createdAt - a.createdAt);
     allPosts = allPosts.slice(0, limitNum);
 
+    console.log('✅ Returning', allPosts.length, 'posts');
+
     res.json({
       success: true,
       posts: allPosts,
       hasMore: allPosts.length === limitNum,
     });
   } catch (error: any) {
-    console.error('Get Following feed error:', error);
+    console.error('❌ Get Following feed error:', error);
     res.status(500).json({ error: 'Failed to fetch following feed', message: error.message });
   }
 };
@@ -728,7 +768,7 @@ const createPost = async (req: any, res: any) => {
 const deletePost = async (req: any, res: any) => {
   try {
     const userId = req.user?.uid;
-    const { postId } = req.params;
+    const { postId, isRepost } = req.params;
 
     console.log('🗑️ Delete request for post:', postId, 'by user:', userId);
 
@@ -754,6 +794,13 @@ const deletePost = async (req: any, res: any) => {
     await db.runTransaction(async (transaction) => {
       // Delete the post
       transaction.delete(postRef);
+      if (isRepost === 'true') {
+        // If it's a repost, also delete the repost record
+        const repostSnapshot = await db .collection('reposts').where('repostId', '==', postId).limit(1).get();
+        if (!repostSnapshot.empty) {
+          transaction.delete(repostSnapshot.docs[0].ref);
+        }   
+      }
 
       // Update user's post count
       const userProfileRef = db.collection('userProfiles').doc(userId);

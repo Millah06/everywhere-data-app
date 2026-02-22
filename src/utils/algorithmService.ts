@@ -46,7 +46,7 @@ export const updatePostScore = async (postId: string, db: any) => {
     const score = await calculateAlgorithmScore(postDoc.data(), db);
     
     await postRef.update({
-      score,
+      algorithmScore: score,
       lastScoreUpdate: admin.firestore.FieldValue.serverTimestamp(),
     });
   } catch (error) {
