@@ -515,14 +515,25 @@ const unfollowUser = async (req: any, res: any) => {
 
  
 
+// backend/controllers/socialController.ts - UPDATE getUserProfile
 const getUserProfile = async (req: any, res: any) => {
   try {
     const { userId } = req.params;
     const currentUserId = req.user?.uid;
 
-    const profileDoc = await db.collection('userProfiles').doc(userId).get();
+    console.log('🔍 Getting profile for userId:', userId);
+    console.log('🔍 Current user:', currentUserId);
+
+    // Try userProfiles first, fallback to users
+    let profileDoc = await db.collection('userProfiles').doc(userId).get();
+    
+    if (!profileDoc.exists) {
+      console.log('⚠️ Profile not found in userProfiles, checking users...');
+      profileDoc = await db.collection('users').doc(userId).get();
+    }
 
     if (!profileDoc.exists) {
+      console.log('❌ Profile not found in userProfiles or users');
       return res.status(404).json({ error: 'User not found' });
     }
 
@@ -540,24 +551,64 @@ const getUserProfile = async (req: any, res: any) => {
       isFollowing = !followDoc.empty;
     }
 
+    // Get badges
+    const badgeDoc = await db.collection('userBadges').doc(userId).get();
+    const badges = badgeDoc.exists ? (badgeDoc.data()?.badges || {}) : {}; // Return {} not []
+
+    // Map to profile format
+    const profile = {
+      userId,
+      username: profileData?.displayName || profileData?.name || profileData?.username || 'Anonymous',
+      displayName: profileData?.displayName || profileData?.name || 'Anonymous',
+      bio: profileData?.bio || '',
+      chatTag: profileData?.chatTag || null,
+      transferUID: profileData?.transferUID || null,
+      email: profileData?.email || null,
+      phoneNumber: profileData?.phoneNumber || null,
+      avatar: profileData?.photoURL || profileData?.photoUrl || profileData?.avatar || null,
+      coverImage: profileData?.coverImage || null,
+      website: profileData?.website || null,
+      location: profileData?.location || null,
+      isPrivate: profileData?.isPrivate || false,
+      allowFollowersToMessage: profileData?.allowFollowersToMessage || false,
+      followerCount: profileData?.followerCount || 0,
+      followingCount: profileData?.followingCount || 0,
+      postCount: profileData?.postCount || 0,
+      repostCount: profileData?.repostCount || 0,
+      totalRewardPointsEarned: profileData?.totalRewardPointsEarned || 0,
+      totalNairaEarned: profileData?.totalNairaEarned || 0,
+      weeklyPoints: profileData?.weeklyPoints || 0,
+      isKycVerified: profileData?.isKycVerified || false,
+      kycVerifiedAt: profileData?.kycVerifiedAt?.toMillis() || null,
+      createdAt: profileData?.createdAt?.toMillis() || Date.now(),
+      lastActiveAt: profileData?.lastActiveAt?.toMillis() || Date.now(),
+      badges, // This is now {} not []
+      isFollowing,
+      isFollowingYou: false, // TODO: Check reverse follow
+    };
+
+    console.log('✅ Profile loaded successfully');
+
     res.json({
       success: true,
-      profile: {
-        userId,
-        ...profileData,
-        isFollowing,
-      },
+      profile,
     });
   } catch (error: any) {
-    console.error('Get user profile error:', error);
+    console.error('❌ Get user profile error:', error);
     res.status(500).json({ error: 'Failed to fetch profile' });
   }
 };
 
+// backend/controllers/socialController.ts - UPDATE getUserPosts
+
 const getUserPosts = async (req: any, res: any) => {
   try {
     const { userId } = req.params;
+    const currentUserId = req.user?.uid;
     const { limit = 20 } = req.query;
+
+    console.log('📥 Getting posts for user:', userId);
+    console.log('🔍 Current user:', currentUserId);
 
     const snapshot = await db
       .collection('posts')
@@ -566,15 +617,42 @@ const getUserPosts = async (req: any, res: any) => {
       .limit(parseInt(limit as string))
       .get();
 
-    const posts = snapshot.docs.map((doc) => {
-      const data = doc.data();
-      return {
-        postId: doc.id,
-        ...data,
-        createdAt: data.createdAt?.toMillis() || Date.now(),
-        boostExpiresAt: data.boostExpiresAt?.toMillis() || null,
-      };
-    });
+    // Check if current user is following this post user
+    let isFollowing = false;
+    if (currentUserId && currentUserId !== userId) {
+      const followDoc = await db
+        .collection('follows')
+        .where('followerId', '==', currentUserId)
+        .where('followingId', '==', userId)
+        .limit(1)
+        .get();
+      isFollowing = !followDoc.empty;
+    }
+
+    const posts = await Promise.all(
+      snapshot.docs.map(async (doc) => {
+        const data = doc.data();
+
+        // Get repost count for this post
+        const repostSnapshot = await db
+          .collection('reposts')
+          .where('originalPostId', '==', doc.id)
+          .get();
+        
+        const repostCount = repostSnapshot.size;
+
+        return {
+          postId: doc.id,
+          ...data,
+          createdAt: data.createdAt?.toMillis() || Date.now(),
+          boostExpiresAt: data.boostExpiresAt?.toMillis() || null,
+          isFollowing, // Add follow status
+          repostCount, // Add repost count
+        };
+      })
+    );
+
+    console.log('✅ Loaded', posts.length, 'posts');
 
     res.json({ success: true, posts });
   } catch (error: any) {
