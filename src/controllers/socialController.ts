@@ -768,7 +768,8 @@ const createPost = async (req: any, res: any) => {
 const deletePost = async (req: any, res: any) => {
   try {
     const userId = req.user?.uid;
-    const { postId, isRepost } = req.params;
+    const { postId } = req.params;
+    const { isRepost } = req.body;
 
     console.log('🗑️ Delete request for post:', postId, 'by user:', userId);
 
@@ -794,7 +795,7 @@ const deletePost = async (req: any, res: any) => {
     await db.runTransaction(async (transaction) => {
       // Delete the post
       transaction.delete(postRef);
-      if (isRepost === 'true') {
+      if (isRepost === true) {
         // If it's a repost, also delete the repost record
         const repostSnapshot = await db .collection('reposts').where('repostId', '==', postId).limit(1).get();
         if (!repostSnapshot.empty) {
