@@ -831,6 +831,45 @@ const deletePost = async (req: any, res: any) => {
   }
 };
 
+// backend/controllers/socialController.ts - ADD THIS FUNCTION
+
+const checkLikeStatus = async (req: any, res: any) => {
+  try {
+    const userId = req.user?.uid;
+    const { postIds } = req.body;
+
+    if (!userId || !postIds || !Array.isArray(postIds)) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    console.log('🔍 Checking like status for', postIds.length, 'posts');
+
+    const likeStatus: { [key: string]: boolean } = {};
+
+    // Check each post
+    for (const postId of postIds) {
+      const likeDoc = await db
+        .collection('posts')
+        .doc(postId)
+        .collection('likes')
+        .doc(userId)
+        .get();
+
+      likeStatus[postId] = likeDoc.exists;
+    }
+
+    console.log('✅ Like status checked');
+
+    res.json({
+      success: true,
+      likeStatus,
+    });
+  } catch (error: any) {
+    console.error('❌ Check like status error:', error);
+    res.status(500).json({ error: 'Failed to check like status' });
+  }
+};
+
 export default {
   createPost,
   getFeed, // Keep existing
@@ -846,4 +885,5 @@ export default {
   getUserProfile,
   getUserPosts,
   deletePost,
+  checkLikeStatus
 };

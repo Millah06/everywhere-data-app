@@ -76,6 +76,9 @@ app.get('/social/leaderboard', authMiddleware, socialController.getTopEarners);
 app.post('/social/upload', authMiddleware, upload.single('image'), uploadPostImage);
 
 // backend/index.ts - ADD THIS ROUTE
+app.post('/social/likes/check', authMiddleware, socialController.checkLikeStatus);
+
+// backend/index.ts - ADD THIS ROUTE
 app.delete('/social/posts/:postId', authMiddleware, socialController.deletePost);
 
 // Reward routes
