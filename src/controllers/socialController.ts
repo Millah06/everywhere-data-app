@@ -641,6 +641,8 @@ const getUserProfile = async (req: any, res: any) => {
 
 // backend/controllers/socialController.ts - UPDATE getUserPosts
 
+// backend/controllers/socialController.ts - UPDATE getUserPosts
+
 const getUserPosts = async (req: any, res: any) => {
   try {
     const { userId } = req.params;
@@ -673,7 +675,19 @@ const getUserPosts = async (req: any, res: any) => {
       snapshot.docs.map(async (doc) => {
         const data = doc.data();
 
-        // Get repost count for this post
+        // Check like status for current user
+        let isLiked = false;
+        if (currentUserId) {
+          const likeDoc = await db
+            .collection('posts')
+            .doc(doc.id)
+            .collection('likes')
+            .doc(currentUserId)
+            .get();
+          isLiked = likeDoc.exists;
+        }
+
+        // Get repost count
         const repostSnapshot = await db
           .collection('reposts')
           .where('originalPostId', '==', doc.id)
@@ -686,13 +700,14 @@ const getUserPosts = async (req: any, res: any) => {
           ...data,
           createdAt: data.createdAt?.toMillis() || Date.now(),
           boostExpiresAt: data.boostExpiresAt?.toMillis() || null,
-          isFollowing, // Add follow status
-          repostCount, // Add repost count
+          isFollowing,
+          isLikedByCurrentUser: isLiked, // ADD THIS
+          repostCount,
         };
       })
     );
 
-    console.log('✅ Loaded', posts.length, 'posts');
+    console.log('✅ Loaded', posts.length, 'posts with like status');
 
     res.json({ success: true, posts });
   } catch (error: any) {
