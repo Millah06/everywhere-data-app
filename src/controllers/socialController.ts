@@ -870,6 +870,120 @@ const checkLikeStatus = async (req: any, res: any) => {
   }
 };
 
+// backend/controllers/socialController.ts - ADD THIS FUNCTION
+
+const getSavedPosts = async (req: any, res: any) => {
+  try {
+    const userId = req.user?.uid;
+    const { limit = 20 } = req.query;
+
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    console.log('📥 Getting saved posts for user:', userId);
+
+    // Get saved post IDs
+    const savedSnapshot = await db
+      .collection('savedPosts')
+      .doc(userId)
+      .collection('posts')
+      .orderBy('savedAt', 'desc')
+      .limit(parseInt(limit as string))
+      .get();
+
+    if (savedSnapshot.empty) {
+      return res.json({ success: true, posts: [] });
+    }
+
+    const postIds = savedSnapshot.docs.map((doc) => doc.id);
+
+    console.log('📋 Found', postIds.length, 'saved posts');
+
+    // Fetch actual posts
+    const posts = await Promise.all(
+      postIds.map(async (postId) => {
+        const postDoc = await db.collection('posts').doc(postId).get();
+
+        if (!postDoc.exists) {
+          return null;
+        }
+
+        const data = postDoc.data();
+
+        // Check if user is following post author
+        let isFollowing = false;
+        if (data?.userId !== userId) {
+          const followDoc = await db
+            .collection('follows')
+            .where('followerId', '==', userId)
+            .where('followingId', '==', data?.userId)
+            .limit(1)
+            .get();
+          isFollowing = !followDoc.empty;
+        }
+
+        // Check like status
+        const likeDoc = await db
+          .collection('posts')
+          .doc(postId)
+          .collection('likes')
+          .doc(userId)
+          .get();
+        const isLiked = likeDoc.exists;
+
+        // Get repost count
+        const repostSnapshot = await db
+          .collection('reposts')
+          .where('originalPostId', '==', postId)
+          .get();
+        const repostCount = repostSnapshot.size;
+
+        return {
+          postId: postDoc.id,
+          userId: data?.userId || '',
+          userName: data?.userName || 'Anonymous',
+          userAvatar: data?.userAvatar || null,
+          text: data?.text || '',
+          imageUrl: data?.imageUrl || null,
+          hashtags: data?.hashtags || [],
+          createdAt: data?.createdAt?.toMillis() || Date.now(),
+          likeCount: data?.likeCount || 0,
+          commentCount: data?.commentCount || 0,
+          rewardCount: data?.rewardCount || 0,
+          rewardPointsTotal: data?.rewardPointsTotal || 0,
+          viewCount: data?.viewCount || 0,
+          isBoosted: data?.isBoosted || false,
+          boostExpiresAt: data?.boostExpiresAt?.toMillis() || null,
+          isRepost: data?.isRepost || false,
+          originalPostId: data?.originalPostId || null,
+          originalUserName: data?.originalUserName || null,
+          score: data?.score || 0,
+          isFollowing,
+          isLikedByCurrentUser: isLiked,
+          isSaved: true, // All posts here are saved
+          repostCount,
+        };
+      })
+    );
+
+    // Filter out null posts (deleted posts)
+    const validPosts = posts.filter((post) => post !== null);
+
+    console.log('✅ Returning', validPosts.length, 'saved posts with full metadata');
+
+    res.json({
+      success: true,
+      posts: validPosts,
+    });
+  } catch (error: any) {
+    console.error('❌ Get saved posts error:', error);
+    res.status(500).json({ error: 'Failed to fetch saved posts', message: error.message });
+  }
+};
+
+ 
+
 export default {
   createPost,
   getFeed, // Keep existing
@@ -885,5 +999,6 @@ export default {
   getUserProfile,
   getUserPosts,
   deletePost,
-  checkLikeStatus
+  checkLikeStatus,
+  getSavedPosts
 };

@@ -101,6 +101,9 @@ app.post('/social/unfollow', authMiddleware, socialController.unfollowUser);
 // Profile routes
 app.get('/social/profile/:userId', authMiddleware, socialController.getUserProfile);
 app.get('/social/profile/:userId/posts', authMiddleware, socialController.getUserPosts);
+// backend/index.ts - ADD THIS ROUTE
+
+app.get('/social/posts/saved', authMiddleware, socialController.getSavedPosts);
 
 // Add to your existing index.ts
 
