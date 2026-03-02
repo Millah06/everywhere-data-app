@@ -1,0 +1,223 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum VendorType {
+  restaurant
+  grocery
+  drinks
+  retail
+}
+
+enum VendorStatus {
+  pending
+  approved
+  rejected
+}
+
+enum OrderStatus {
+  pending
+  confirmed
+  preparing
+  outForDelivery
+  delivered
+  completed
+  cancelled
+  appealed
+}
+
+enum EscrowStatus {
+  held
+  released
+  appealed
+  refunded
+}
+
+model Vendor {
+  id                   String       @id @default(uuid())
+  ownerId              String       // Firebase UID of the vendor owner
+  vendorType           VendorType
+  name                 String
+  description          String
+  logo                 String       @default("")
+  email                String       @default("")
+  phone                String       @default("")
+  cac                  String       @default("")
+  rating               Float        @default(0)
+  totalCompletedOrders Int          @default(0)
+  completionRate       Float        @default(100)
+  verified             Boolean      @default(false)
+  status               VendorStatus @default(pending)
+  isVisible            Boolean      @default(false)
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+
+  branches Branch[]
+  orders   Order[]
+  reviews  Review[]
+}
+
+model Branch {
+  id                   String   @id @default(uuid())
+  vendorId             String
+  state                String
+  lga                  String
+  area                 String
+  street               String
+  estimatedDeliveryTime Int     @default(30) // minutes
+  createdAt            DateTime @default(now())
+
+  vendor        Vendor         @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  deliveryZones DeliveryZone[]
+  menuItems     MenuItem[]
+  orders        Order[]
+}
+
+model DeliveryZone {
+  id          String @id @default(uuid())
+  branchId    String
+  state       String
+  lga         String
+  area        String
+  deliveryFee Float
+
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+}
+
+model MenuItem {
+  id          String   @id @default(uuid())
+  branchId    String
+  name        String
+  description String
+  price       Float
+  imageUrl    String   @default("")
+  isAvailable Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  branch     Branch      @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  orderItems OrderItem[]
+}
+
+model Order {
+  id              String      @id @default(uuid())
+  userId          String      // Firebase UID of buyer
+  vendorId        String
+  branchId        String
+  subtotal        Float
+  deliveryFee     Float
+  transactionFee  Float
+  totalAmount     Float
+  status          OrderStatus @default(pending)
+  escrowStatus    EscrowStatus @default(held)
+
+  // Delivery address (flat — no FK, structured data)
+  deliveryState   String
+  deliveryLga     String
+  deliveryArea    String
+  deliveryStreet  String
+
+  // Vendor snapshot (so vendor name still shows if vendor deletes account)
+  vendorName      String      @default("")
+  vendorLogo      String      @default("")
+  branchName      String      @default("")
+
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  vendor     Vendor      @relation(fields: [vendorId], references: [id])
+  branch     Branch      @relation(fields: [branchId], references: [id])
+  items      OrderItem[]
+  escrow     Escrow?
+}
+
+model OrderItem {
+  id         String @id @default(uuid())
+  orderId    String
+  menuItemId String
+  name       String // snapshot at order time
+  price      Float  // snapshot at order time — editing menu price won't affect this
+  quantity   Int
+
+  order    Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItem MenuItem @relation(fields: [menuItemId], references: [id])
+}
+
+model Escrow {
+  id            String       @id @default(uuid())
+  orderId       String       @unique
+  amountHeld    Float
+  commission    Float
+  releaseStatus EscrowStatus @default(held)
+  appealReason  String?
+  autoReleaseAt DateTime
+  releasedAt    DateTime?
+  createdAt     DateTime     @default(now())
+
+  order Order @relation(fields: [orderId], references: [id])
+}
+
+model Review {
+  id        String   @id @default(uuid())
+  vendorId  String
+  userId    String   // Firebase UID
+  rating    Float    // 1-5
+  comment   String
+  createdAt DateTime @default(now())
+
+  vendor Vendor @relation(fields: [vendorId], references: [id])
+}
+
+model AppConfig {
+  id                    String @id @default("singleton") // always one row
+  transactionFeePercent Float  @default(0)  // 0 at launch — update here to change globally
+  autoReleaseHours      Int    @default(24)
+  appealWindowHours     Int    @default(48)
+  chatCloseHours        Int    @default(72)
+  commissionPercent     Float  @default(5)
+}
+
+// Location hierarchy — seeded from your location data
+model LocationState {
+  id   String @id @default(uuid())
+  name String @unique
+
+  lgas LocationLga[]
+}
+
+model LocationLga {
+  id      String @id @default(uuid())
+  name    String
+  stateId String
+
+  state   LocationState  @relation(fields: [stateId], references: [id])
+  areas   LocationArea[]
+}
+
+model LocationArea {
+  id    String @id @default(uuid())
+  name  String
+  lgaId String
+
+  lga     LocationLga      @relation(fields: [lgaId], references: [id])
+  streets LocationStreet[]
+}
+
+model LocationStreet {
+  id     String @id @default(uuid())
+  name   String
+  areaId String
+
+  area LocationArea @relation(fields: [areaId], references: [id])
+}

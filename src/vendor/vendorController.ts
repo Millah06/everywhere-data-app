@@ -1,0 +1,263 @@
+import { checkAuth } from "../webhook/utils/auth";
+import { prisma } from "../prisma";
+import admin from "firebase-admin";
+
+const getVendors = async (req: any, res: any) => {
+  try {
+    await checkAuth(req);
+
+    const { vendorType, state, lga, search, sortBy } = req.query;
+
+    const where: any = { status: "approved", isVisible: true };
+    if (vendorType) where.vendorType = vendorType;
+    if (search) where.name = { contains: search, mode: "insensitive" };
+    if (state || lga) {
+      where.branches = {
+        some: { ...(state && { state }), ...(lga && { lga }) },
+      };
+    }
+
+    const vendors = await prisma.vendor.findMany({
+      where,
+      include: { branches: { include: { deliveryZones: true } } },
+    });
+
+    const maxOrders = Math.max(
+      ...vendors.map((v) => v.totalCompletedOrders),
+      1,
+    );
+
+    const sorted = vendors.sort((a, b) => {
+      if (sortBy === "completionRate")
+        return b.completionRate - a.completionRate;
+      if (sortBy === "totalCompletedOrders")
+        return b.totalCompletedOrders - a.totalCompletedOrders;
+      const scoreA =
+        (a.rating / 5) * 0.5 +
+        (a.completionRate / 100) * 0.3 +
+        (a.totalCompletedOrders / maxOrders) * 0.2;
+      const scoreB =
+        (b.rating / 5) * 0.5 +
+        (b.completionRate / 100) * 0.3 +
+        (b.totalCompletedOrders / maxOrders) * 0.2;
+      return scoreB - scoreA;
+    });
+
+    res.json(sorted);
+  } catch (e: any) {
+    res.status(401).json({ message: e.message });
+  }
+};
+
+const getVendorById = async (req: any, res: any) => {
+  try {
+    await checkAuth(req);
+
+    const { id } = req.params;
+
+    const vendor = await prisma.vendor.findUnique({
+      where: { id },
+      include: {
+        branches: { include: { deliveryZones: true } },
+        reviews: true,
+      },
+    });
+
+    if (!vendor) return res.status(404).json({ message: "Vendor not found" });
+
+    res.json(vendor);
+  } catch (e: any) {
+    res.status(401).json({ message: e.message });
+  }
+};
+
+const getMyVendor = async (req: any, res: any) => {
+  try {
+    const userId = await checkAuth(req);
+
+    const vendor = await prisma.vendor.findFirst({
+      where: { ownerId: userId },
+      include: { branches: { include: { deliveryZones: true } } },
+    });
+
+    if (!vendor) return res.status(404).json({ message: "Not a vendor" });
+
+    res.json(vendor);
+  } catch (e: any) {
+    res.status(401).json({ message: e.message });
+  }
+};
+
+const applyAsVendor = async (req: any, res: any) => {
+  try {
+    const userId = await checkAuth(req);
+
+    const { name, vendorType, description, phone, email, cac, branch } =
+      req.body;
+
+    const existing = await prisma.vendor.findFirst({
+      where: { ownerId: userId },
+    });
+    if (existing)
+      return res
+        .status(400)
+        .json({ message: "You have already applied as a vendor" });
+
+    const vendor = await prisma.vendor.create({
+      data: {
+        ownerId: userId,
+        name,
+        vendorType,
+        description,
+        phone: phone || "",
+        email: email || "",
+        cac: cac || "",
+        status: "pending",
+        isVisible: false,
+        ...(branch && {
+          branches: {
+            create: {
+              state: branch.state,
+              lga: branch.lga,
+              area: branch.area,
+              street: branch.street,
+              estimatedDeliveryTime: branch.estimatedDeliveryTime || 30,
+            },
+          },
+        }),
+      },
+      include: { branches: true },
+    });
+
+    await admin.firestore().collection("adminNotifications").add({
+      type: "NEW_VENDOR_APPLICATION",
+      vendorId: vendor.id,
+      vendorName: vendor.name,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    res.status(201).json(vendor);
+  } catch (e: any) {
+    res.status(401).json({ message: e.message });
+  }
+};
+
+const getVendorMetrics = async (req: any, res: any) => {
+  try {
+    const userId = await checkAuth(req);
+
+    const vendor = await prisma.vendor.findFirst({
+      where: { ownerId: userId },
+    });
+    if (!vendor) return res.status(404).json({ message: "Vendor not found" });
+
+    const orders = await prisma.order.findMany({
+      where: { vendorId: vendor.id },
+    });
+    const escrows = await prisma.escrow.findMany({
+      where: { order: { vendorId: vendor.id } },
+    });
+
+    const completed = orders.filter((o) => o.status === "completed");
+    const totalRevenue = completed.reduce((sum, o) => sum + o.subtotal, 0);
+    const pendingEscrow = escrows
+      .filter((e) => e.releaseStatus === "held")
+      .reduce((sum, e) => sum + e.amountHeld, 0);
+    const releasedEarnings = escrows
+      .filter((e) => e.releaseStatus === "released")
+      .reduce((sum, e) => sum + (e.amountHeld - e.commission), 0);
+
+    res.json({
+      totalCompletedOrders: completed.length,
+      completionRate:
+        orders.length > 0
+          ? Math.round((completed.length / orders.length) * 100)
+          : 100,
+      totalRevenue,
+      pendingEscrow,
+      releasedEarnings,
+      rating: vendor.rating,
+    });
+  } catch (e: any) {
+    res.status(401).json({ message: e.message });
+  }
+};
+
+const toggleVisibility = async (req: any, res: any) => {
+  try {
+    const userId = await checkAuth(req);
+
+    const vendor = await prisma.vendor.findFirst({
+      where: { ownerId: userId },
+    });
+    if (!vendor) return res.status(404).json({ message: "Vendor not found" });
+    if (vendor.status !== "approved")
+      return res.status(400).json({ message: "Vendor is not approved yet" });
+
+    const updated = await prisma.vendor.update({
+      where: { id: vendor.id },
+      data: { isVisible: !vendor.isVisible },
+    });
+
+    res.json({ isVisible: updated.isVisible });
+  } catch (e: any) {
+    res.status(401).json({ message: e.message });
+  }
+};
+
+const addReview = async (req: any, res: any) => {
+  try {
+    const userId = await checkAuth(req);
+
+    const { id: vendorId } = req.params;
+    const { rating, comment } = req.body;
+
+    if (rating < 1 || rating > 5)
+      return res
+        .status(400)
+        .json({ message: "Rating must be between 1 and 5" });
+
+    const completedOrder = await prisma.order.findFirst({
+      where: { userId, vendorId, status: "completed" },
+    });
+    if (!completedOrder)
+      return res
+        .status(403)
+        .json({ message: "You must complete an order before reviewing" });
+
+    const alreadyReviewed = await prisma.review.findFirst({
+      where: { userId, vendorId },
+    });
+    if (alreadyReviewed)
+      return res
+        .status(400)
+        .json({ message: "You have already reviewed this vendor" });
+
+    const review = await prisma.review.create({
+      data: { vendorId, userId, rating, comment },
+    });
+
+    const allReviews = await prisma.review.findMany({ where: { vendorId } });
+    const avg =
+      allReviews.reduce((sum, r) => sum + r.rating, 0) / allReviews.length;
+
+    await prisma.vendor.update({
+      where: { id: vendorId },
+      data: { rating: Math.round(avg * 10) / 10 },
+    });
+
+    res.status(201).json(review);
+  } catch (e: any) {
+    res.status(401).json({ message: e.message });
+  }
+};
+
+export default {
+  getVendors,
+  getVendorById,
+  getMyVendor,
+  applyAsVendor,
+  getVendorMetrics,
+  toggleVisibility,
+  addReview,
+};

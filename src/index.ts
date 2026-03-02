@@ -53,6 +53,131 @@ app.use(express.json());
 const upload = multer({ storage: multer.memoryStorage(), 
   limits: { fileSize: 10 * 1024 * 1024 } }); // 10MB limit
 
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STEP 1: Add these imports at the top of your index.ts with your other imports
+// ─────────────────────────────────────────────────────────────────────────────
+
+import vendorController from "./vendor/vendorController";
+import branchController from "./branch/branchController";
+import menuController from "./menu/menuController";
+import orderController from "./order/orderController";
+import chatController from "./chat/chatController";
+import locationController from "./location/locationController";
+import adminController from "./admin/adminController";
+import uploadController from "./upload/uploadController";
+import { runAutoReleaseJob } from "./escow/autoReleaseJob";
+import cron from "node-cron";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STEP 2: Paste these routes into your index.ts after your existing routes.
+// All routes use your existing `upload` multer instance (already in your index.ts).
+// All routes call checkAuth internally — no authMiddleware needed on the route.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── VENDOR ────────────────────────────────────────────────────────────────────
+// NOTE: /vendor/me and /vendor/metrics MUST come before /vendor/:id
+// because Express matches routes top-to-bottom and :id would swallow "me"
+app.get("/vendor/list", vendorController.getVendors);
+app.get("/vendor/me", vendorController.getMyVendor);
+app.get("/vendor/metrics", vendorController.getVendorMetrics);
+app.get("/vendor/:id", vendorController.getVendorById);
+app.post("/vendor/apply", vendorController.applyAsVendor);
+app.put("/vendor/visibility", vendorController.toggleVisibility);
+app.post("/vendor/:id/review", vendorController.addReview);
+app.post("/vendor/upload/logo", upload.single("image"), uploadController.uploadVendorLogo);
+
+// ── BRANCH ────────────────────────────────────────────────────────────────────
+app.get("/branch/:branchId/menu", branchController.getBranchMenu);
+app.get("/branch/:branchId/delivery-zones", branchController.getDeliveryZones);
+app.post("/branch/add", branchController.addBranch);
+app.put("/branch/:branchId/update", branchController.updateBranch);
+app.delete("/branch/:branchId/delete", branchController.deleteBranch);
+app.post("/branch/:branchId/zone/add", branchController.addDeliveryZone);
+app.delete("/branch/zone/:zoneId/delete", branchController.deleteDeliveryZone);
+
+// ── MENU ──────────────────────────────────────────────────────────────────────
+app.post("/menu/:branchId/add", menuController.addMenuItem);
+app.put("/menu/:itemId/update", menuController.updateMenuItem);
+app.delete("/menu/:itemId/delete", menuController.deleteMenuItem);
+app.put("/menu/:itemId/toggle", menuController.toggleMenuItemAvailability);
+app.post("/menu/:itemId/upload-image", upload.single("image"), uploadController.uploadMenuItemImage);
+
+// ── ORDER ─────────────────────────────────────────────────────────────────────
+// NOTE: /order/mine and /order/vendor/list MUST come before /order/:orderId
+app.post("/order/place", orderController.placeOrder);
+app.get("/order/mine", orderController.getMyOrders);
+app.get("/order/vendor/list", orderController.getVendorOrders);
+app.get("/order/:orderId", orderController.getOrderById);
+app.post("/order/:orderId/confirm", orderController.confirmDelivery);
+app.post("/order/:orderId/appeal", orderController.appealOrder);
+app.put("/order/:orderId/status", orderController.updateOrderStatus);
+
+// ── CHAT ──────────────────────────────────────────────────────────────────────
+// Flutter listens to Firestore directly for realtime messages.
+// Firestore path: orderChats/{orderId}/messages (ordered by createdAt asc)
+// These HTTP endpoints handle sending and initial load only.
+app.post("/chat/:orderId/send", chatController.sendMessage);
+app.get("/chat/:orderId/messages", chatController.getMessages);
+
+// ── LOCATION ──────────────────────────────────────────────────────────────────
+// Used by Flutter dropdowns: state → lga → area → street (each call uses the id from previous)
+app.get("/location/states", locationController.getStates);
+app.get("/location/lgas/:stateId", locationController.getLgas);
+app.get("/location/areas/:lgaId", locationController.getAreas);
+app.get("/location/streets/:areaId", locationController.getStreets);
+app.get("/location/hierarchy", locationController.getFullHierarchy);
+
+// ── ADMIN ─────────────────────────────────────────────────────────────────────
+// These routes call checkAuth internally. Add your own role check in each
+// controller function when you have admin roles set up in your system.
+app.get("/admin/vendor/pending", adminController.getPendingVendors);
+app.post("/admin/vendor/:vendorId/approve", adminController.approveVendor);
+app.post("/admin/vendor/:vendorId/reject", adminController.rejectVendor);
+app.get("/admin/order/appeals", adminController.getAppeals);
+app.post("/admin/order/:orderId/resolve", adminController.resolveAppeal);
+app.post("/admin/chat/:orderId/send", chatController.adminSendMessage);
+app.get("/admin/config", adminController.getConfig);
+app.put("/admin/config", adminController.updateConfig);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STEP 3: Paste this AFTER your app.listen() call.
+// Escrow auto-release runs every hour — releases held funds where the buyer
+// did not confirm delivery within autoReleaseHours (set in AppConfig table).
+// ─────────────────────────────────────────────────────────────────────────────
+
+cron.schedule("0 * * * *", async () => {
+  await runAutoReleaseJob();
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STEP 4: Run this ONE TIME to seed AppConfig.
+// Either run it as a script or add it temporarily after app.listen().
+// transactionFeePercent is 0 at launch — update the DB row to change globally.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// import { prisma } from "./lib/prisma";
+// await prisma.appConfig.upsert({
+//   where: { id: "singleton" },
+//   update: {},
+//   create: {
+//     id: "singleton",
+//     transactionFeePercent: 0,
+//     autoReleaseHours: 24,
+//     appealWindowHours: 48,
+//     chatCloseHours: 72,
+//     commissionPercent: 5,
+//   },
+// });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STEP 5: Install the one new package needed for the cron job.
+// npm install node-cron
+// npm install --save-dev @types/node-cron
+// ─────────────────────────────────────────────────────────────────────────────
+
+
 app.post("/airtime/sendAirtime", sendAirtimeSecure);
 app.post("/airtime/sendRecharge", sendRechargeCard);
 app.post("/cable/purchaseTV", purchaseTV);
