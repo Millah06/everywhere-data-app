@@ -1,6 +1,6 @@
-import { checkAuth } from "../webhook/utils/auth";
-import { prisma } from "../prisma";
-import admin from "firebase-admin";
+import { prisma } from "../lib/prisma";
+import { checkAuth } from "../utils/checkAuth";
+import { admin } from "../lib/firebase";
 
 const notify = async (
   userId: string,
@@ -18,7 +18,7 @@ const notify = async (
 
 const recalculateVendorMetrics = async (vendorId: string) => {
   const all = await prisma.order.findMany({ where: { vendorId } });
-  const completed = all.filter((o) => o.status === "completed");
+  const completed = all.filter((o: any) => o.status === "completed");
   const rate =
     all.length > 0 ? Math.round((completed.length / all.length) * 100) : 100;
   await prisma.vendor.update({
@@ -50,12 +50,14 @@ const placeOrder = async (req: any, res: any) => {
         .json({ message: "Branch does not belong to this vendor" });
 
     const zone = branch.deliveryZones.find(
-      (z) => z.area === deliveryAddress.area,
+      (z: any) => z.area === deliveryAddress.area,
     );
     if (!zone)
-      return res.status(400).json({
-        message: `No delivery zone set up for area: ${deliveryAddress.area}`,
-      });
+      return res
+        .status(400)
+        .json({
+          message: `No delivery zone set up for area: ${deliveryAddress.area}`,
+        });
 
     let subtotal = 0;
     const enrichedItems: {
@@ -314,9 +316,11 @@ const updateOrderStatus = async (req: any, res: any) => {
     };
 
     if (!allowed[order.status]?.includes(status)) {
-      return res.status(400).json({
-        message: `Cannot change status from ${order.status} to ${status}`,
-      });
+      return res
+        .status(400)
+        .json({
+          message: `Cannot change status from ${order.status} to ${status}`,
+        });
     }
 
     const updated = await prisma.order.update({

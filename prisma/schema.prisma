@@ -5,8 +5,8 @@
 // Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
 
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider = "prisma-client-js"
+  // output   = "../generated/prisma"
 }
 
 datasource db {
@@ -58,7 +58,7 @@ model Vendor {
   totalCompletedOrders Int          @default(0)
   completionRate       Float        @default(100)
   verified             Boolean      @default(false)
-  status               VendorStatus @default(pending)
+  status               VendorStatus @default(approved)
   isVisible            Boolean      @default(false)
   createdAt            DateTime     @default(now())
   updatedAt            DateTime     @updatedAt

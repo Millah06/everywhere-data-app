@@ -1,6 +1,5 @@
- 
-import { prisma } from "../prisma";
-import admin from "firebase-admin";
+import { prisma } from "../lib/prisma";
+import { admin } from "../lib/firebase";
 
 const notify = async (
   userId: string,
@@ -41,7 +40,7 @@ export const runAutoReleaseJob = async () => {
       const all = await prisma.order.findMany({
         where: { vendorId: escrow.order.vendorId },
       });
-      const completed = all.filter((o) => o.status === "completed");
+      const completed = all.filter((o: any) => o.status === "completed");
       const rate =
         all.length > 0
           ? Math.round((completed.length / all.length) * 100)

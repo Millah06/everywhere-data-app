@@ -1,6 +1,6 @@
-import { checkAuth } from "../webhook/utils/auth";
-import { prisma } from "../prisma";
-import * as admin from "firebase-admin";
+import { prisma } from "../lib/prisma";
+import { checkAuth } from "../utils/checkAuth";
+import { admin } from "../lib/firebase";
 
 const notify = async (
   userId: string,
@@ -131,7 +131,7 @@ const resolveAppeal = async (req: any, res: any) => {
         const all = await prisma.order.findMany({
           where: { vendorId: vendor.id },
         });
-        const completed = all.filter((o) => o.status === "completed");
+        const completed = all.filter((o: any) => o.status === "completed");
         const rate =
           all.length > 0
             ? Math.round((completed.length / all.length) * 100)

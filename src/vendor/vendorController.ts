@@ -1,6 +1,5 @@
-import { checkAuth } from "../webhook/utils/auth";
-import { prisma } from "../prisma";
-import admin from "firebase-admin";
+import { prisma } from "../lib/prisma";
+import { checkAuth } from "../utils/checkAuth";
 
 const getVendors = async (req: any, res: any) => {
   try {
@@ -23,11 +22,11 @@ const getVendors = async (req: any, res: any) => {
     });
 
     const maxOrders = Math.max(
-      ...vendors.map((v) => v.totalCompletedOrders),
+      ...vendors.map((v: any) => v.totalCompletedOrders as number),
       1,
     );
 
-    const sorted = vendors.sort((a, b) => {
+    const sorted = vendors.sort((a: any, b: any) => {
       if (sortBy === "completionRate")
         return b.completionRate - a.completionRate;
       if (sortBy === "totalCompletedOrders")
@@ -129,6 +128,7 @@ const applyAsVendor = async (req: any, res: any) => {
       include: { branches: true },
     });
 
+    const { admin } = await import("../lib/firebase");
     await admin.firestore().collection("adminNotifications").add({
       type: "NEW_VENDOR_APPLICATION",
       vendorId: vendor.id,
@@ -158,14 +158,17 @@ const getVendorMetrics = async (req: any, res: any) => {
       where: { order: { vendorId: vendor.id } },
     });
 
-    const completed = orders.filter((o) => o.status === "completed");
-    const totalRevenue = completed.reduce((sum, o) => sum + o.subtotal, 0);
+    const completed = orders.filter((o: any) => o.status === "completed");
+    const totalRevenue = completed.reduce(
+      (sum: number, o: any) => sum + o.subtotal,
+      0,
+    );
     const pendingEscrow = escrows
-      .filter((e) => e.releaseStatus === "held")
-      .reduce((sum, e) => sum + e.amountHeld, 0);
+      .filter((e: any) => e.releaseStatus === "held")
+      .reduce((sum: number, e: any) => sum + e.amountHeld, 0);
     const releasedEarnings = escrows
-      .filter((e) => e.releaseStatus === "released")
-      .reduce((sum, e) => sum + (e.amountHeld - e.commission), 0);
+      .filter((e: any) => e.releaseStatus === "released")
+      .reduce((sum: number, e: any) => sum + (e.amountHeld - e.commission), 0);
 
     res.json({
       totalCompletedOrders: completed.length,
@@ -239,7 +242,8 @@ const addReview = async (req: any, res: any) => {
 
     const allReviews = await prisma.review.findMany({ where: { vendorId } });
     const avg =
-      allReviews.reduce((sum, r) => sum + r.rating, 0) / allReviews.length;
+      allReviews.reduce((sum: number, r: any) => sum + r.rating, 0) /
+      allReviews.length;
 
     await prisma.vendor.update({
       where: { id: vendorId },
