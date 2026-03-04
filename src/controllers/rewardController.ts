@@ -321,9 +321,13 @@ const boostPost = async (req: any, res: any) => {
       return res.status(403).json({ error: "Can only boost your own posts" });
     }
 
-    if (postData?.isBoosted) {
+    if (postData?.boostExpiresAt && postData.boostExpiresAt.toMillis() > Date.now()) {
       return res.status(400).json({ error: "Post is already boosted" });
     }
+
+    // if (postData?.isBoosted) {
+    //   return res.status(400).json({ error: "Post is already boosted" });
+    // }
 
     // Check wallet balance
     const balance = await getWalletBalance(userId);
