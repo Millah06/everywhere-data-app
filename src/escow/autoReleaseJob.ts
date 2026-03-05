@@ -1,5 +1,5 @@
-import { prisma } from "../lib/prisma";
-import { admin } from "../lib/firebase";
+import { prisma } from "../prisma";
+import admin from "../webhook/utils/firebase";
 
 const notify = async (
   userId: string,

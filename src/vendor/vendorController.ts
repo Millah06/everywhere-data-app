@@ -1,5 +1,6 @@
-import { prisma } from "../lib/prisma";
-import { checkAuth } from "../utils/checkAuth";
+import { prisma } from "../prisma";
+import { checkAuth } from "../webhook/utils/auth";
+import admin from "../webhook/utils/firebase";
 
 const getVendors = async (req: any, res: any) => {
   try {
@@ -128,7 +129,7 @@ const applyAsVendor = async (req: any, res: any) => {
       include: { branches: true },
     });
 
-    const { admin } = await import("../lib/firebase");
+     
     await admin.firestore().collection("adminNotifications").add({
       type: "NEW_VENDOR_APPLICATION",
       vendorId: vendor.id,
