@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "prisma generate && tsc",
     "build:watch": "tsc --watch",
     "dev": "nodemon src/index.ts",
     "start": "node lib/index.js"
