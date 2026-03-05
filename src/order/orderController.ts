@@ -1,6 +1,7 @@
 import { prisma } from "../prisma";
 import { checkAuth } from "../webhook/utils/auth";
 import admin from "../webhook/utils/firebase";
+import { sendNotification } from "../webhook/notification";
 
 const notify = async (
   userId: string,
@@ -31,6 +32,13 @@ const placeOrder = async (req: any, res: any) => {
   try {
     const userId = await checkAuth(req);
 
+    const notificationToken = await admin
+      .firestore()
+      .collection("users")
+      .doc(userId)
+      .get()
+      .then((doc) => doc.data()?.notificationToken as string | undefined);
+
     const { vendorId, branchId, items, deliveryAddress } = req.body;
 
     const config = await prisma.appConfig.findFirst();
@@ -53,11 +61,9 @@ const placeOrder = async (req: any, res: any) => {
       (z: any) => z.area === deliveryAddress.area,
     );
     if (!zone)
-      return res
-        .status(400)
-        .json({
-          message: `No delivery zone set up for area: ${deliveryAddress.area}`,
-        });
+      return res.status(400).json({
+        message: `No delivery zone set up for area: ${deliveryAddress.area}`,
+      });
 
     let subtotal = 0;
     const enrichedItems: {
@@ -137,6 +143,14 @@ const placeOrder = async (req: any, res: any) => {
       orderId: order.id,
       totalAmount,
     });
+
+    if (notificationToken) {
+      await sendNotification(
+        notificationToken,
+        "New Order Created",
+        `You have a new order worth ₦${totalAmount}`,
+      );
+    }
 
     res.status(201).json(order);
   } catch (e: any) {
@@ -316,11 +330,9 @@ const updateOrderStatus = async (req: any, res: any) => {
     };
 
     if (!allowed[order.status]?.includes(status)) {
-      return res
-        .status(400)
-        .json({
-          message: `Cannot change status from ${order.status} to ${status}`,
-        });
+      return res.status(400).json({
+        message: `Cannot change status from ${order.status} to ${status}`,
+      });
     }
 
     const updated = await prisma.order.update({
