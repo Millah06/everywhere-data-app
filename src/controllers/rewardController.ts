@@ -321,8 +321,10 @@ const boostPost = async (req: any, res: any) => {
       return res.status(403).json({ error: "Can only boost your own posts" });
     }
 
-    if (postData?.boostExpiresAt && postData.boostExpiresAt.toMillis() > Date.now()) {
-      return res.status(400).json({ error: "Post is already boosted" });
+    if (postData?.boostExpiresAt && postData.boostExpiresAt.toMillis() < Date.now()) {
+      return res.status(400).json({ error: `Post is already boosted until 
+        ${new Date(postData.boostExpiresAt.toMillis()).toLocaleString()} 
+        ${postData.boostExpiresAt.toMillis() < Date.now() ? 'UTC' : ''}` });
     }
 
     // if (postData?.isBoosted) {
