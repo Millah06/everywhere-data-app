@@ -79,23 +79,23 @@ import cron from "node-cron";
 // ── VENDOR ────────────────────────────────────────────────────────────────────
 // NOTE: /vendor/me and /vendor/metrics MUST come before /vendor/:id
 // because Express matches routes top-to-bottom and :id would swallow "me"
-app.get("/vendor/list", vendorController.getVendors);
-app.get("/vendor/me", vendorController.getMyVendor);
-app.get("/vendor/metrics", vendorController.getVendorMetrics);
-app.get("/vendor/:id", vendorController.getVendorById);
-app.post("/vendor/apply", vendorController.applyAsVendor);
-app.put("/vendor/visibility", vendorController.toggleVisibility);
-app.post("/vendor/:id/review", vendorController.addReview);
+app.get("/vendor/list", authMiddleware, vendorController.getVendors);
+app.get("/vendor/me", authMiddleware, vendorController.getMyVendor);
+app.get("/vendor/metrics", authMiddleware, vendorController.getVendorMetrics);
+app.get("/vendor/:id", authMiddleware, vendorController.getVendorById);
+app.post("/vendor/apply", authMiddleware, vendorController.applyAsVendor);
+app.put("/vendor/visibility", authMiddleware, vendorController.toggleVisibility);
+app.post("/vendor/:id/review", authMiddleware, vendorController.addReview);
 app.post("/vendor/upload/logo", upload.single("image"), uploadController.uploadVendorLogo);
 
 // ── BRANCH ────────────────────────────────────────────────────────────────────
-app.get("/branch/:branchId/menu", branchController.getBranchMenu);
-app.get("/branch/:branchId/delivery-zones", branchController.getDeliveryZones);
-app.post("/branch/add", branchController.addBranch);
-app.put("/branch/:branchId/update", branchController.updateBranch);
-app.delete("/branch/:branchId/delete", branchController.deleteBranch);
-app.post("/branch/:branchId/zone/add", branchController.addDeliveryZone);
-app.delete("/branch/zone/:zoneId/delete", branchController.deleteDeliveryZone);
+app.get("/branch/:branchId/menu", authMiddleware, branchController.getBranchMenu);
+app.get("/branch/:branchId/delivery-zones", authMiddleware, branchController.getDeliveryZones);
+app.post("/branch/add", authMiddleware, branchController.addBranch);
+app.put("/branch/:branchId/update", authMiddleware, branchController.updateBranch);
+app.delete("/branch/:branchId/delete", authMiddleware, branchController.deleteBranch);
+app.post("/branch/:branchId/zone/add", authMiddleware, branchController.addDeliveryZone);
+app.delete("/branch/zone/:zoneId/delete", authMiddleware, branchController.deleteDeliveryZone);
 
 // ── MENU ──────────────────────────────────────────────────────────────────────
 app.post("/menu/:branchId/add", menuController.addMenuItem);

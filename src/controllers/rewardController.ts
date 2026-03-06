@@ -327,10 +327,7 @@ const boostPost = async (req: any, res: any) => {
         ${postData.boostExpiresAt.toMillis() < Date.now() ? 'UTC' : ''}` });
     }
 
-    // if (postData?.isBoosted) {
-    //   return res.status(400).json({ error: "Post is already boosted" });
-    // }
-
+    
     // Check wallet balance
     const balance = await getWalletBalance(userId);
     if (balance < BOOST_COST) {
