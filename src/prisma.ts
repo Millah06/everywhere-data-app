@@ -1,16 +1,12 @@
-
-
-// lib/prisma.ts
 import { PrismaClient } from "@prisma/client";
 
 declare global {
-  // Prevent multiple instances in development
   var prisma: PrismaClient | undefined;
 }
 
-// Pass DATABASE_URL explicitly if needed
-const prisma = global.prisma ?? new PrismaClient({});
+// Just use DATABASE_URL from environment automatically
+const client = new PrismaClient();
+
+export const prisma = global.prisma ?? client;
 
 if (process.env.NODE_ENV !== "production") global.prisma = prisma;
-
-export { prisma };
