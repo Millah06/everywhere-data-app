@@ -182,7 +182,7 @@ cron.schedule("0 * * * *", async () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 app.get("/banks/list", createExternalWithdrawal.fetchListOfBanks);
-
+app.get("/banks/resolve/:accountNumber/:bankCode", createExternalWithdrawal.resolveBankAccount);
 app.post("/airtime/sendAirtime", sendAirtimeSecure);
 app.post("/airtime/sendRecharge", sendRechargeCard);
 app.post("/cable/purchaseTV", purchaseTV);
