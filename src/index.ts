@@ -4,6 +4,10 @@ import dotenv from "dotenv";
 import multer from "multer"; 
 import * as admin from "firebase-admin";
 
+// Import finance tools
+
+import createExternalWithdrawal from "./wallet/createExternalWithdrawal";
+
 import sendAirtimeSecure from "./airtime/sendAirtime";
 import sendRechargeCard from "./airtime/airtimePin";
 import buyDataSecure from "./data/buyData";
@@ -177,6 +181,7 @@ cron.schedule("0 * * * *", async () => {
 // npm install --save-dev @types/node-cron
 // ─────────────────────────────────────────────────────────────────────────────
 
+app.get("/banks/list", createExternalWithdrawal.fetchListOfBanks);
 
 app.post("/airtime/sendAirtime", sendAirtimeSecure);
 app.post("/airtime/sendRecharge", sendRechargeCard);
