@@ -20,7 +20,7 @@ const fetchListOfBanks = async (req: any, res: any) => {
 
 const resolveBankAccount = async (req: any, res: any) => {
   try {
-    const { accountNumber, bankCode } = req.query;
+    const { accountNumber, bankCode } = req.params;
     const response = await axios.get(
       `https://api.paystack.co/bank/resolve?account_number=${accountNumber}&bank_code=${bankCode}`,
        {
