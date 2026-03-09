@@ -75,8 +75,15 @@ const createTransferRecipient = async (
 const createExternalWithdrawal = async (req: any, res: any) => {
   try {
     const userId = await checkAuth(req);
-    const { clientRequestId, amount, reason, name, bankCode, accountNumber, humanRef } =
-      req.body;
+    const {
+      clientRequestId,
+      amount,
+      reason,
+      name,
+      bankCode,
+      accountNumber,
+      humanRef,
+    } = req.body;
 
     if (!bankCode || !amount) {
       return res.status(400).json({ error: "Missing receiverUid or amount" });
@@ -90,14 +97,13 @@ const createExternalWithdrawal = async (req: any, res: any) => {
     );
 
     if (!receipientResponse.status) {
-       console.log("Failed to create transfer recipient:", receipientResponse);
+      console.log("Failed to create transfer recipient:", receipientResponse);
       return res
         .status(400)
         .json({ error: "failed to create transfer receipient" });
-       
     }
 
-    console.log("Pass creating receipient:", receipientResponse);
+    console.log("Pass creating :", receipientResponse);
 
     const transactionRef = generateUUID();
 
@@ -110,7 +116,7 @@ const createExternalWithdrawal = async (req: any, res: any) => {
 
     // Idempotency check
     const existing = await transfersRef
-      .where("clientRequestId", "==", req.body.clientRequestId)
+      .where("clientRequestId", "==", clientRequestId)
       .limit(1)
       .get();
 
@@ -141,6 +147,7 @@ const createExternalWithdrawal = async (req: any, res: any) => {
       // Create transfer doc
       transaction.set(transferDoc, {
         humanRef: humanRef,
+        recipient: receipientResponse.data.recipient_code,
         clientRequestId: clientRequestId,
         mode: "wallet",
         userId,
@@ -148,7 +155,7 @@ const createExternalWithdrawal = async (req: any, res: any) => {
         status: "processing",
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
-      // Sender transaction
+      // User transaction
       transaction.set(transactionsRef.doc(transactionRef), {
         userId: userId,
         transferId: transferDoc.id,
@@ -168,12 +175,14 @@ const createExternalWithdrawal = async (req: any, res: any) => {
       });
     });
 
+    console.log("Calling Paystack transfer...");
+
     //initiate transfer on paystack
     const transferResponse = await axios.post(
       "https://api.paystack.co/transfer",
-       {
+      {
         source: "balance",
-        amount,
+        amount: amount* 100, // Paystack expects amount in kobo
         reference: transactionRef,
         recipient: receipientResponse.data.recipient_code,
         reason: reason,
@@ -184,22 +193,30 @@ const createExternalWithdrawal = async (req: any, res: any) => {
           "Content-Type": "application/json",
         },
       },
-     
     );
+
+    console.log("Paystack response:", transferResponse.data);
 
     if (notificationToken) {
       await sendNotification(
         notificationToken,
         "Transfer Initiated",
-        `Your transfer of ₦${amount.toLocaleString()} has been initiated.`
+        `Your transfer of ₦${amount.toLocaleString()} has been initiated.`,
       );
     }
 
     return res
       .status(200)
-      .json({ status: true, transferId: transferDoc.id, transferStatus: transferResponse.data.data.status });
+      .json({
+        status: true,
+        transferId: transferDoc.id,
+        transferStatus: transferResponse.data.data.status,
+      });
   } catch (e: any) {
-    res.status(401).json({ message: e.message });
+    console.error("Withdrawal error:", e?.response?.data || e);
+    return res.status(500).json({
+      error: e?.response?.data || e.message,
+    });
   }
 };
 
