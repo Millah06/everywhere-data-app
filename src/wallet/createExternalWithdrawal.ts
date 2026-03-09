@@ -90,9 +90,11 @@ const createExternalWithdrawal = async (req: any, res: any) => {
     );
 
     if (!receipientResponse.status) {
+       console.error("Failed to create transfer recipient:", receipientResponse);
       return res
         .status(400)
         .json({ error: "failed to create transfer receipient" });
+       
     }
 
     const transactionRef = generateUUID();
