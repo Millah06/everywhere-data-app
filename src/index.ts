@@ -8,15 +8,15 @@ import * as admin from "firebase-admin";
 
 import createExternalWithdrawal from "./wallet/createExternalWithdrawal";
 
-import sendAirtimeSecure from "./airtime/sendAirtime";
-import sendRechargeCard from "./airtime/airtimePin";
-import buyDataSecure from "./data/buyData";
-import verifyMerchant from "./cable/verifyMerchant";
-import purchaseTV from "./cable/purchaseTV";
-import verifyMeter from "./electricity/verifyMeter";
-import purchaseElectric from "./electricity/purchaseElectric"
-import purchaseSmile from "./data/purchaseSmile";
-import jambServices from "./exams/jambServices";
+import sendAirtimeSecure from "./utilitiesServices/airtime/sendAirtime";
+import sendRechargeCard from "./utilitiesServices/airtime/airtimePin";
+import buyDataSecure from "./utilitiesServices/dataPurchase/buyData";
+import verifyMerchant from "./utilitiesServices/cable/verifyMerchant";
+import purchaseTV from "./utilitiesServices/cable/purchaseTV";
+import verifyMeter from "./utilitiesServices/electricity/verifyMeter";
+import purchaseElectric from "./utilitiesServices/electricity/purchaseElectric"
+import purchaseSmile from "./utilitiesServices/dataPurchase/purchaseSmile";
+import jambServices from "./utilitiesServices/exams/jambServices";
 // import other functions here too if needed
 import createVA from "./wallet/createVa";
 import paystackWebhook from "./webhook/utils/payStackWebhook";
@@ -184,6 +184,7 @@ cron.schedule("0 * * * *", async () => {
 app.get("/banks/list", createExternalWithdrawal.fetchListOfBanks);
 
 app.get("/banks/resolve/:accountNumber/:bankCode", createExternalWithdrawal.resolveBankAccount);
+app.post('/banks/initiateWithdrawal', authMiddleware, createExternalWithdrawal.createExternalWithdrawal);
 
 app.post("/airtime/sendAirtime", sendAirtimeSecure);
 app.post("/airtime/sendRecharge", sendRechargeCard);

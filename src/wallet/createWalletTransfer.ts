@@ -1,3 +1,4 @@
+import axios from "axios";
 import { sendNotification } from "../webhook/notification";
 import admin from "../webhook/utils/firebase";
 
@@ -29,6 +30,7 @@ const createWalletTransfer = async (req: any, res: any) => {
     if (!existing.empty) {
       return res.json(existing.docs[0].data());
     }
+
     const transferDoc = transfersRef.doc(clientRequestId);
 
     await admin.firestore().runTransaction(async (transaction) => {
@@ -103,6 +105,8 @@ const createWalletTransfer = async (req: any, res: any) => {
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
     });
+
+   
 
     // 2️⃣ Update transfer to success AFTER transaction
     await transferDoc.update({
