@@ -182,7 +182,7 @@ const createExternalWithdrawal = async (req: any, res: any) => {
       "https://api.paystack.co/transfer",
       {
         source: "balance",
-        amount: amount* 100, // Paystack expects amount in kobo
+        amount: amount * 100, // Paystack expects amount in kobo
         reference: transactionRef,
         recipient: receipientResponse.data.recipient_code,
         reason: reason,
@@ -192,8 +192,37 @@ const createExternalWithdrawal = async (req: any, res: any) => {
           Authorization: `Bearer ${process.env.PAYSTACK_SECRET}`,
           "Content-Type": "application/json",
         },
+        validateStatus: () => true, // Accept all status codes for custom handling
       },
     );
+
+    if (!transferResponse.data.status) {
+      console.log("Paystack transfer failed:", transferResponse.data);
+
+      await transferDoc.update({
+        status: "failed",
+        providerResponse: transferResponse.data,
+      });
+
+      await transactionsRef.doc(transactionRef).update({
+        status: "failed",
+      });
+
+      if (notificationToken) {
+      await sendNotification(
+        notificationToken,
+        "Transfer Initiated",
+        `Your transfer of ₦${amount.toLocaleString()} has been failed`,
+      );
+    }
+
+      return res.status(200).json({
+        status: false,
+        amount: amount,
+        message: transferResponse.data.message,
+        transactionRef,
+      });
+    }
 
     console.log("Paystack response:", transferResponse.data);
 
@@ -205,13 +234,11 @@ const createExternalWithdrawal = async (req: any, res: any) => {
       );
     }
 
-    return res
-      .status(200)
-      .json({
-        status: true,
-        transferId: transferDoc.id,
-        transferStatus: transferResponse.data.data.status,
-      });
+    return res.status(200).json({
+      status: true,
+      transferId: transferDoc.id,
+      transferStatus: transferResponse.data.data.status,
+    });
   } catch (e: any) {
     console.error("Withdrawal error:", e?.response?.data || e);
     return res.status(500).json({
