@@ -161,7 +161,7 @@ const paystackWebhook = async (req: Request, res: Response): Promise<void> => {
           await sendNotification(
             notificationToken,
             "Your Pending Transfer was successful",
-            `You successfully sent ₦${transferamount} to ${recipientName} via ${bankName}`,
+            `You successfully sent ₦${transferamount} to ${data.recipient.name} via ${data.recipient.details.bank_name}`,
           );
         }
 
