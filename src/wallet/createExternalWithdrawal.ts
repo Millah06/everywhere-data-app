@@ -42,7 +42,7 @@ const resolveBankAccount = async (req: any, res: any) => {
       console.log("Failed to resolve bank account:", response.data);
       return res
         .status(200)
-        .json({ status: false, message: "Invalid account number or bank", details: response.data });
+        .json({ success: false, message: "Invalid account number or bank", details: response.data });
     }
 
     res.json({ success: true, account: response.data.data });
