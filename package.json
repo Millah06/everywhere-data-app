@@ -7,7 +7,7 @@
     "build": "prisma generate && tsc",
     "build:watch": "tsc --watch",
     "dev": "nodemon src/index.ts",
-    "start": "node lib/index.js"
+    "start": "prisma migrate deploy && node lib/index.js"
   },
   "keywords": [],
   "author": "",
