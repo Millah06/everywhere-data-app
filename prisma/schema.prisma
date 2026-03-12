@@ -45,11 +45,12 @@ enum EscrowStatus {
 
 model Vendor {
   id                   String       @id @default(uuid())
-  ownerId              String       // Firebase UID of the vendor owner
+  ownerId              String // Firebase UID of the vendor owner
   vendorType           VendorType
   name                 String
   description          String
   logo                 String       @default("")
+  coverPhoto           String       @default("")
   email                String       @default("")
   phone                String       @default("")
   cac                  String       @default("")
@@ -58,7 +59,7 @@ model Vendor {
   completionRate       Float        @default(100)
   verified             Boolean      @default(false)
   status               VendorStatus @default(approved)
-  isVisible            Boolean      @default(false)
+  isVisible            Boolean      @default(true)
   createdAt            DateTime     @default(now())
   updatedAt            DateTime     @updatedAt
 
@@ -68,14 +69,14 @@ model Vendor {
 }
 
 model Branch {
-  id                   String   @id @default(uuid())
-  vendorId             String
-  state                String
-  lga                  String
-  area                 String
-  street               String
-  estimatedDeliveryTime Int     @default(30) // minutes
-  createdAt            DateTime @default(now())
+  id                    String   @id @default(uuid())
+  vendorId              String
+  state                 String
+  lga                   String
+  area                  String
+  street                String
+  estimatedDeliveryTime Int      @default(30) // minutes
+  createdAt             DateTime @default(now())
 
   vendor        Vendor         @relation(fields: [vendorId], references: [id], onDelete: Cascade)
   deliveryZones DeliveryZone[]
@@ -110,35 +111,36 @@ model MenuItem {
 }
 
 model Order {
-  id              String      @id @default(uuid())
-  userId          String      // Firebase UID of buyer
-  vendorId        String
-  branchId        String
-  subtotal        Float
-  deliveryFee     Float
-  transactionFee  Float
-  totalAmount     Float
-  status          OrderStatus @default(pending)
-  escrowStatus    EscrowStatus @default(held)
+  id             String       @id @default(uuid())
+  userId         String // Firebase UID of buyer
+  vendorId       String
+  branchId       String
+  subtotal       Float
+  deliveryFee    Float
+  transactionFee Float
+  totalAmount    Float
+  status         OrderStatus  @default(pending)
+  escrowStatus   EscrowStatus @default(held)
 
   // Delivery address (flat — no FK, structured data)
-  deliveryState   String
-  deliveryLga     String
-  deliveryArea    String
-  deliveryStreet  String
+  deliveryState  String
+  deliveryLga    String
+  deliveryArea   String
+  deliveryStreet String
 
   // Vendor snapshot (so vendor name still shows if vendor deletes account)
-  vendorName      String      @default("")
-  vendorLogo      String      @default("")
-  branchName      String      @default("")
+  vendorName  String @default("")
+  vendorLogo  String @default("")
+  vendorCover String @default("")
+  branchName  String @default("")
 
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  vendor     Vendor      @relation(fields: [vendorId], references: [id])
-  branch     Branch      @relation(fields: [branchId], references: [id])
-  items      OrderItem[]
-  escrow     Escrow?
+  vendor Vendor      @relation(fields: [vendorId], references: [id])
+  branch Branch      @relation(fields: [branchId], references: [id])
+  items  OrderItem[]
+  escrow Escrow?
 }
 
 model OrderItem {
@@ -146,7 +148,7 @@ model OrderItem {
   orderId    String
   menuItemId String
   name       String // snapshot at order time
-  price      Float  // snapshot at order time — editing menu price won't affect this
+  price      Float // snapshot at order time — editing menu price won't affect this
   quantity   Int
 
   order    Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
@@ -170,8 +172,8 @@ model Escrow {
 model Review {
   id        String   @id @default(uuid())
   vendorId  String
-  userId    String   // Firebase UID
-  rating    Float    // 1-5
+  userId    String // Firebase UID
+  rating    Float // 1-5
   comment   String
   createdAt DateTime @default(now())
 
@@ -180,7 +182,7 @@ model Review {
 
 model AppConfig {
   id                    String @id @default("singleton") // always one row
-  transactionFeePercent Float  @default(0)  // 0 at launch — update here to change globally
+  transactionFeePercent Float  @default(0) // 0 at launch — update here to change globally
   autoReleaseHours      Int    @default(24)
   appealWindowHours     Int    @default(48)
   chatCloseHours        Int    @default(72)
@@ -200,8 +202,8 @@ model LocationLga {
   name    String
   stateId String
 
-  state   LocationState  @relation(fields: [stateId], references: [id])
-  areas   LocationArea[]
+  state LocationState  @relation(fields: [stateId], references: [id])
+  areas LocationArea[]
 }
 
 model LocationArea {

@@ -1,5 +1,5 @@
-import { checkAuth } from "../webhook/utils/auth";
-import { prisma } from "../prisma";
+import { checkAuth } from "../../webhook/utils/auth";
+import { prisma } from "../../prisma";
 import admin from "firebase-admin";
 
 const addMenuItem = async (req: any, res: any) => {

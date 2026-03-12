@@ -1,5 +1,5 @@
-import { checkAuth } from "../webhook/utils/auth";
-import { prisma } from "../prisma";
+import { checkAuth } from "../../webhook/utils/auth";
+import { prisma } from "../../prisma";
 
 
 const getBranchMenu = async (req: any, res: any) => {
@@ -41,7 +41,9 @@ const addBranch = async (req: any, res: any) => {
     const vendor = await prisma.vendor.findFirst({
       where: { ownerId: userId },
     });
+
     if (!vendor) return res.status(404).json({ message: "Vendor not found" });
+    
     if (vendor.status !== "approved")
       return res.status(403).json({ message: "Vendor is not approved" });
 

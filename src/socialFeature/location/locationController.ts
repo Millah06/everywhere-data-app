@@ -1,5 +1,5 @@
-import { checkAuth } from "../webhook/utils/auth";
-import { prisma } from "../prisma";
+import { checkAuth } from "../../webhook/utils/auth";
+import { prisma } from "../../prisma";
 
 
 const getStates = async (req: any, res: any) => {

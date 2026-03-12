@@ -63,12 +63,12 @@ const  upload = multer({ storage: multer.memoryStorage(),
 // STEP 1: Add these imports at the top of your index.ts with your other imports
 // ─────────────────────────────────────────────────────────────────────────────
 
-import vendorController from "./vendor/vendorController";
-import branchController from "./branch/branchController";
-import menuController from "./menu/menuController";
-import orderController from "./order/orderController";
+import vendorController from "./socialFeature/vendor/vendorController";
+import branchController from "./socialFeature/branch/branchController";
+import menuController from "./socialFeature/menu/menuController";
+import orderController from "./socialFeature/order/orderController";
 import chatController from "./chat/chatController";
-import locationController from "./location/locationController";
+import locationController from "./socialFeature/location/locationController";
 import adminController from "./admin/adminController";
 import uploadController from "./upload/uploadController";
 import { runAutoReleaseJob } from "./escow/autoReleaseJob";

@@ -1,6 +1,6 @@
-import { prisma } from "../prisma";
-import { checkAuth } from "../webhook/utils/auth";
-import admin from "../webhook/utils/firebase";
+import { prisma } from "../../prisma";
+import { checkAuth } from "../../webhook/utils/auth";
+import admin from "../../webhook/utils/firebase";
 
 const getVendors = async (req: any, res: any) => {
   try {
