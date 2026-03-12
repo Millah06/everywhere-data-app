@@ -34,7 +34,7 @@ export const uploadPostImage = async (req: any, res: any) => {
       return res.status(400).json({ error: "No image file provided" });
     }
 
-    const imageUrl = uploadImage(req.file, userId, "post");
+    const imageUrl = await uploadImage(req.file, userId, "post");
 
     res.status(200).json({
       success: true,
