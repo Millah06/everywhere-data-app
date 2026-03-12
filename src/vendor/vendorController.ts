@@ -4,7 +4,7 @@ import admin from "../webhook/utils/firebase";
 
 const getVendors = async (req: any, res: any) => {
   try {
-    // await checkAuth(req);
+    await checkAuth(req);
 
     const { vendorType, state, lga, search, sortBy } = req.query;
 

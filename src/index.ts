@@ -54,7 +54,7 @@ app.use(express.json());
  
 // Congigure multer for file uploads
 
-const upload = multer({ storage: multer.memoryStorage(), 
+const  upload = multer({ storage: multer.memoryStorage(), 
   limits: { fileSize: 10 * 1024 * 1024 } }); // 10MB limit
 
 
@@ -83,7 +83,7 @@ import cron from "node-cron";
 // ── VENDOR ────────────────────────────────────────────────────────────────────
 // NOTE: /vendor/me and /vendor/metrics MUST come before /vendor/:id
 // because Express matches routes top-to-bottom and :id would swallow "me"
-app.get("/vendor/list",  vendorController.getVendors);
+app.get("/vendor/list",  authMiddleware, vendorController.getVendors);
 app.get("/vendor/me", authMiddleware, vendorController.getMyVendor);
 app.get("/vendor/metrics", authMiddleware, vendorController.getVendorMetrics);
 app.get("/vendor/:id", authMiddleware, vendorController.getVendorById);

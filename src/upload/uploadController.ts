@@ -1,7 +1,6 @@
 import { checkAuth } from "../webhook/utils/auth";
 import { prisma } from "../prisma";
-import admin from "firebase-admin";
-import { uploadPostImage } from "../cludfareServices/uploadImage";
+import { uploadImage} from "../cludfareServices/uploadImage";
 
 
 
@@ -17,7 +16,7 @@ const uploadVendorLogo = async (req: any, res: any) => {
     });
     if (!vendor) return res.status(404).json({ message: "Vendor not found" });
 
-    const imageUrl = await uploadPostImage(req.file, res);
+    const imageUrl = await uploadImage(req.file, userId, 'vendorLogo');
 
     await prisma.vendor.update({
       where: { id: vendor.id },
@@ -47,9 +46,9 @@ const uploadMenuItemImage = async (req: any, res: any) => {
     if (item.branch.vendor.ownerId !== userId)
       return res.status(403).json({ message: "Unauthorized" });
 
-    const imageUrl = await uploadPostImage(req.file, res);;
+    const imageUrl = await uploadImage(req.file, userId, 'menuItem');;
 
-    await prisma.menuItem.update({ where: { id: itemId }, data: { imageUrl } });
+    await prisma.menuItem.update({ where: { id: itemId }, data: { imageUrl} });
 
     res.json({ success: true, imageUrl });
   } catch (e: any) {
