@@ -71,7 +71,7 @@ import chatController from "./chat/chatController";
 import locationController from "./socialFeature/location/locationController";
 import adminController from "./admin/adminController";
 import uploadController from "./upload/uploadController";
-import { runAutoReleaseJob } from "./escow/autoReleaseJob";
+import { runAutoReleaseJob } from ".//socialFeature/escow/autoReleaseJob";
 import cron from "node-cron";
 
 // ─────────────────────────────────────────────────────────────────────────────
