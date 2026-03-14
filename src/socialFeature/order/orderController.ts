@@ -3,6 +3,7 @@ import { checkAuth } from "../../webhook/utils/auth";
 import admin from "../../webhook/utils/firebase";
 import { sendNotification } from "../../webhook/notification";
 import { generateUUID } from "../../utils/uuid";
+import { Order } from "@prisma/client";
 
 const notify = async (
   userId: string,
@@ -426,15 +427,17 @@ const updateOrderStatus = async (req: any, res: any) => {
       });
     }
 
+    let updated: Order;
+
      if (status === "cancelled") {
       await prisma.escrow.update({
         where: { orderId },
         data: { releaseStatus: "refunded", refundedAt: new Date() },
       });
 
-      const updated = await prisma.order.update({
+      updated = await prisma.order.update({
         where: { id: orderId },
-        data: { escrowStatus: "refunded", updatedAt: new Date() },
+        data: { escrowStatus: "refunded", updatedAt: new Date(), status  },
       });
 
       await admin.firestore().runTransaction(async (transaction) => {
@@ -474,7 +477,7 @@ const updateOrderStatus = async (req: any, res: any) => {
     }
 
 
-    const updated = await prisma.order.update({
+    updated = await prisma.order.update({
       where: { id: orderId },
       data: { status },
       include: { items: true },
