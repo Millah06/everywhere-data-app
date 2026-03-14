@@ -293,10 +293,14 @@ const confirmDelivery = async (req: any, res: any) => {
     });
 
     await admin.firestore().runTransaction(async (transaction) => {
-      const vendorOwnerDoc = admin.firestore().collection("users").doc(vendor!.ownerId);
+      const vendorOwnerDoc = admin
+        .firestore()
+        .collection("users")
+        .doc(vendor!.ownerId);
       const vendorOwnerSnap = await transaction.get(vendorOwnerDoc);
 
-      const vendorOwnerBalance = vendorOwnerSnap.data()?.wallet.fiat.availableBalance || 0;
+      const vendorOwnerBalance =
+        vendorOwnerSnap.data()?.wallet.fiat.availableBalance || 0;
       const newVendorOwnerBalance = vendorOwnerBalance + order.totalAmount;
 
       transaction.update(vendorOwnerDoc, {
@@ -305,15 +309,17 @@ const confirmDelivery = async (req: any, res: any) => {
 
       // Vendor transaction
       const transactionRef = generateUUID();
-      transaction.set(admin.firestore().collection("transactions").doc(transactionRef), {
-        orderId,
-        vendorId: vendor!.id,
-        userId: vendor!.ownerId,
-        amount: order.totalAmount,
-        type: "ORDER_COMPLETED",
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-
+      transaction.set(
+        admin.firestore().collection("transactions").doc(transactionRef),
+        {
+          orderId,
+          vendorId: vendor!.id,
+          userId: vendor!.ownerId,
+          amount: order.totalAmount,
+          type: "ORDER_COMPLETED",
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+      );
     });
 
     if (vendor) await notify(vendor.ownerId, "ORDER_COMPLETED", { orderId });
@@ -420,19 +426,61 @@ const updateOrderStatus = async (req: any, res: any) => {
       });
     }
 
+     if (status === "cancelled") {
+      await prisma.escrow.update({
+        where: { orderId },
+        data: { releaseStatus: "refunded", refundedAt: new Date() },
+      });
+
+      const updated = await prisma.order.update({
+        where: { id: orderId },
+        data: { escrowStatus: "refunded", updatedAt: new Date() },
+      });
+
+      await admin.firestore().runTransaction(async (transaction) => {
+        const vendorOwnerDoc = admin
+          .firestore()
+          .collection("users")
+          .doc(updated.userId);
+        const vendorOwnerSnap = await transaction.get(vendorOwnerDoc);
+
+        const userOwnerBalance =
+          vendorOwnerSnap.data()?.wallet.fiat.availableBalance || 0;
+        const newVendorOwnerBalance = userOwnerBalance + order.totalAmount;
+        const userLockedBalance = vendorOwnerSnap.data()?.wallet.fiat.lockedBalance || 0;
+        const newUserLockedBalance = userLockedBalance - order.totalAmount;
+
+        transaction.update(vendorOwnerDoc, {
+          "wallet.fiat.availableBalance": newVendorOwnerBalance,
+          "wallet.fiat.lockedBalance": newUserLockedBalance,
+        });
+
+        // Vendor transaction
+        const transactionRef = generateUUID();
+        transaction.set(
+          admin.firestore().collection("transactions").doc(transactionRef),
+          {
+            orderId,
+            vendorId: vendor!.id,
+            userId: vendor!.ownerId,
+            amount: order.totalAmount,
+            type: "ORDER_COMPLETED",
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+        );
+      });
+
+      await recalculateVendorMetrics(order.vendorId);
+    }
+
+
     const updated = await prisma.order.update({
       where: { id: orderId },
       data: { status },
       include: { items: true },
     });
 
-    if (status === "cancelled") {
-      await prisma.escrow.update({
-        where: { orderId },
-        data: { releaseStatus: "refunded", refundedAt: new Date() },
-      });
-    }
-
+   
     await notify(order.userId, "ORDER_STATUS_UPDATED", { orderId, status });
 
     res.json(updated);
