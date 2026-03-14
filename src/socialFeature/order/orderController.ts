@@ -2,6 +2,7 @@ import { prisma } from "../../prisma";
 import { checkAuth } from "../../webhook/utils/auth";
 import admin from "../../webhook/utils/firebase";
 import { sendNotification } from "../../webhook/notification";
+import { generateUUID } from "../../utils/uuid";
 
 const notify = async (
   userId: string,
@@ -31,6 +32,8 @@ const recalculateVendorMetrics = async (vendorId: string) => {
 const placeOrder = async (req: any, res: any) => {
   try {
     const userId = await checkAuth(req);
+
+    const clientRequestId = "";
 
     const notificationToken = await admin
       .firestore()
@@ -102,6 +105,63 @@ const placeOrder = async (req: any, res: any) => {
     const deliveryFee = zone.deliveryFee;
     const transactionFee = subtotal * (config.transactionFeePercent / 100);
     const totalAmount = subtotal + deliveryFee + transactionFee;
+
+    const transactionRef = generateUUID();
+
+    const usersRef = admin.firestore().collection("users");
+    const transfersRef = admin.firestore().collection("transfers");
+    const transactionsRef = admin.firestore().collection("transactions");
+
+    const userDoc = await usersRef.doc(userId).get();
+
+    // Idempotency check
+    const existing = await transfersRef
+      .where("clientRequestId", "==", clientRequestId)
+      .limit(1)
+      .get();
+
+    if (!existing.empty) {
+      return res.json(existing.docs[0].data());
+    }
+
+    const transferDoc = transfersRef.doc(transactionRef);
+
+    //locked user balance and create transfer record in firestore
+    await admin.firestore().runTransaction(async (transaction) => {
+      const userDoc = usersRef.doc(userId);
+
+      const userSnap = await transaction.get(userDoc);
+
+      const userBalance = userSnap.data()?.wallet.fiat.availableBalance;
+      const wallet = userSnap.data()?.wallet.fiat;
+      if (userBalance < totalAmount) {
+        throw new Error("Insufficient balance");
+      }
+      const newUserBalance = userBalance - totalAmount;
+
+      transaction.update(userDoc, {
+        "wallet.fiat.availableBalance": newUserBalance,
+        "wallet.fiat.lockedBalance": wallet.lockedBalance + totalAmount,
+      });
+      // User transaction
+      transaction.set(transactionsRef.doc(transactionRef), {
+        userId: userId,
+        transferId: transferDoc.id,
+        metaData: {
+          finalAmountToPay: totalAmount,
+          productName: "Product Purchase",
+          direction: "debit",
+          transactionID: "",
+        },
+        type: "wallet",
+        clientRequestId,
+        amount: totalAmount,
+        balanceBefore: userBalance,
+        balanceAfter: newUserBalance,
+        status: "processing",
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    });
 
     const order = await prisma.order.create({
       data: {
@@ -231,6 +291,31 @@ const confirmDelivery = async (req: any, res: any) => {
     const vendor = await prisma.vendor.findUnique({
       where: { id: order.vendorId },
     });
+
+    await admin.firestore().runTransaction(async (transaction) => {
+      const vendorOwnerDoc = admin.firestore().collection("users").doc(vendor!.ownerId);
+      const vendorOwnerSnap = await transaction.get(vendorOwnerDoc);
+
+      const vendorOwnerBalance = vendorOwnerSnap.data()?.wallet.fiat.availableBalance || 0;
+      const newVendorOwnerBalance = vendorOwnerBalance + order.totalAmount;
+
+      transaction.update(vendorOwnerDoc, {
+        "wallet.fiat.availableBalance": newVendorOwnerBalance,
+      });
+
+      // Vendor transaction
+      const transactionRef = generateUUID();
+      transaction.set(admin.firestore().collection("transactions").doc(transactionRef), {
+        orderId,
+        vendorId: vendor!.id,
+        userId: vendor!.ownerId,
+        amount: order.totalAmount,
+        type: "ORDER_COMPLETED",
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+    });
+
     if (vendor) await notify(vendor.ownerId, "ORDER_COMPLETED", { orderId });
 
     res.json(updated);
@@ -340,6 +425,13 @@ const updateOrderStatus = async (req: any, res: any) => {
       data: { status },
       include: { items: true },
     });
+
+    if (status === "cancelled") {
+      await prisma.escrow.update({
+        where: { orderId },
+        data: { releaseStatus: "refunded", refundedAt: new Date() },
+      });
+    }
 
     await notify(order.userId, "ORDER_STATUS_UPDATED", { orderId, status });
 

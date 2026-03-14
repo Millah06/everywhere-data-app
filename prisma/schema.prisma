@@ -32,6 +32,7 @@ enum OrderStatus {
   outForDelivery
   delivered
   completed
+  pendingFundRelease
   cancelled
   appealed
 }
@@ -164,6 +165,7 @@ model Escrow {
   appealReason  String?
   autoReleaseAt DateTime
   releasedAt    DateTime?
+  refundedAt    DateTime?
   createdAt     DateTime     @default(now())
 
   order Order @relation(fields: [orderId], references: [id])
