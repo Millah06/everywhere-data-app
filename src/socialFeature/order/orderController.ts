@@ -438,6 +438,7 @@ const updateOrderStatus = async (req: any, res: any) => {
       updated = await prisma.order.update({
         where: { id: orderId },
         data: { escrowStatus: "refunded", updatedAt: new Date(), status  },
+        include: { items: true },
       });
 
       await admin.firestore().runTransaction(async (transaction) => {
