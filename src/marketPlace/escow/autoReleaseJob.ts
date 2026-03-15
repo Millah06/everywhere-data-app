@@ -72,3 +72,31 @@ export const runAutoReleaseJob = async () => {
     }
   }
 };
+
+export const runAutoCancelJob = async () => {
+  // Find orders still "pending" after 30 minutes with no vendor action
+  const cutoff = new Date(Date.now() - 30 * 60 * 1000);
+
+  const stale = await prisma.order.findMany({
+    where: { status: "pending", createdAt: { lt: cutoff } },
+    include: { escrow: true },
+  });
+
+  for (const order of stale) {
+    await prisma.order.update({ where: { id: order.id }, data: { status: "cancelled" } });
+    if (order.escrow) {
+      await prisma.escrow.update({
+        where: { orderId: order.id },
+        data: { releaseStatus: "refunded" },
+      });
+    }
+    // Notify buyer
+    await admin.firestore().collection("notifications").add({
+      recipientId: order.userId,
+      type: "ORDER_AUTO_CANCELLED",
+      data: { orderId: order.id, vendorName: order.vendorName },
+      read: false,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  }
+};

@@ -1,8 +1,6 @@
-import { checkAuth } from "../webhook/utils/auth";
-import { prisma } from "../prisma";
-import { uploadImage} from "../cludfareServices/uploadImage";
-
-
+import { checkAuth } from "../../webhook/utils/auth";
+import { prisma } from "../../prisma";
+import { uploadImage } from "../../cludfareServices/uploadImage";
 
 const uploadVendorLogo = async (req: any, res: any) => {
   try {
@@ -16,7 +14,7 @@ const uploadVendorLogo = async (req: any, res: any) => {
     });
     if (!vendor) return res.status(404).json({ message: "Vendor not found" });
 
-    const imageUrl = await uploadImage(req.file, userId, 'vendorLogo');
+    const imageUrl = await uploadImage(req.file, userId, "vendorLogo");
 
     await prisma.vendor.update({
       where: { id: vendor.id },
@@ -41,11 +39,11 @@ const uploadVendorCoverImage = async (req: any, res: any) => {
     });
     if (!vendor) return res.status(404).json({ message: "Vendor not found" });
 
-    const imageUrl = await uploadImage(req.file, userId, 'vendorCover');
+    const imageUrl = await uploadImage(req.file, userId, "vendorCover");
 
     await prisma.vendor.update({
       where: { id: vendor.id },
-      data: { coverPhoto : imageUrl },
+      data: { coverPhoto: imageUrl },
     });
 
     res.json({ success: true, imageUrl });
@@ -71,9 +69,9 @@ const uploadMenuItemImage = async (req: any, res: any) => {
     if (item.branch.vendor.ownerId !== userId)
       return res.status(403).json({ message: "Unauthorized" });
 
-    const imageUrl = await uploadImage(req.file, userId, 'menuItem');;
+    const imageUrl = await uploadImage(req.file, userId, "menuItem");
 
-    await prisma.menuItem.update({ where: { id: itemId }, data: { imageUrl} });
+    await prisma.menuItem.update({ where: { id: itemId }, data: { imageUrl } });
 
     res.json({ success: true, imageUrl });
   } catch (e: any) {
@@ -81,4 +79,35 @@ const uploadMenuItemImage = async (req: any, res: any) => {
   }
 };
 
-export default { uploadVendorLogo, uploadMenuItemImage, uploadVendorCoverImage };
+const uploadCacCertificate = async (req: any, res: any) => {
+  try {
+    const userId = await checkAuth(req);
+    const vendor = await prisma.vendor.findFirst({
+      where: { ownerId: userId },
+    });
+    if (!vendor) return res.status(404).json({ message: "Vendor not found" });
+
+    const imageUrl = await uploadImage(
+      req.file,
+      userId,
+      "cacCertificate"
+    );
+
+    // Store on vendor — add cacCertificateUrl field to schema
+    await prisma.vendor.update({
+      where: { id: vendor.id },
+      data: { cacCertificateUrl: imageUrl },
+    });
+
+    res.json({ url: imageUrl });
+  } catch (e: any) {
+    res.status(401).json({ message: e.message });
+  }
+};
+
+export default {
+  uploadVendorLogo,
+  uploadMenuItemImage,
+  uploadVendorCoverImage,
+  uploadCacCertificate,
+};

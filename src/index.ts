@@ -63,15 +63,15 @@ const  upload = multer({ storage: multer.memoryStorage(),
 // STEP 1: Add these imports at the top of your index.ts with your other imports
 // ─────────────────────────────────────────────────────────────────────────────
 
-import vendorController from "./socialFeature/vendor/vendorController";
-import branchController from "./socialFeature/branch/branchController";
-import menuController from "./socialFeature/menu/menuController";
-import orderController from "./socialFeature/order/orderController";
+import vendorController from "./marketPlace/vendor/vendorController";
+import branchController from "./marketPlace/branch/branchController";
+import menuController from "./marketPlace/menu/menuController";
+import orderController from "./marketPlace/order/orderController";
 import chatController from "./chat/chatController";
-import locationController from "./socialFeature/location/locationController";
+import locationController from "./marketPlace/location/locationController";
 import adminController from "./admin/adminController";
-import uploadController from "./upload/uploadController";
-import { runAutoReleaseJob } from ".//socialFeature/escow/autoReleaseJob";
+import uploadController from "./marketPlace/upload/uploadController";
+import { runAutoCancelJob, runAutoReleaseJob } from "./marketPlace/escow/autoReleaseJob";
 import cron from "node-cron";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -89,8 +89,13 @@ app.get("/vendor/metrics", authMiddleware, vendorController.getVendorMetrics);
 app.get("/vendor/:id", authMiddleware, vendorController.getVendorById);
 app.post("/vendor/apply", authMiddleware, vendorController.applyAsVendor);
 app.put("/vendor/visibility", authMiddleware, vendorController.toggleVisibility);
+app.put("/vendor/pod-toggle", vendorController.togglePodAcceptance); // simple toggle like visibility
+app.put("/vendor/profile", authMiddleware, vendorController.updateProfile);
 app.post("/vendor/:id/review", authMiddleware, vendorController.addReview);
 app.post("/vendor/upload/logo", upload.single("image"), uploadController.uploadVendorLogo);
+app.post("/vendor/upload/coverPhoto", upload.single("image"), uploadController.uploadVendorCoverImage);
+app.post("/vendor/upload/cac", upload.single("image"), uploadController.uploadCacCertificate);
+app.post("/vendor/verify/request", vendorController.requestVerification);
 
 // ── BRANCH ────────────────────────────────────────────────────────────────────
 app.get("/branch/:branchId/menu", authMiddleware, branchController.getBranchMenu);
@@ -116,7 +121,14 @@ app.get("/order/vendor/list", orderController.getVendorOrders);
 app.get("/order/:orderId", orderController.getOrderById);
 app.post("/order/:orderId/confirm", orderController.confirmDelivery);
 app.post("/order/:orderId/appeal", orderController.appealOrder);
+app.post("/order/:orderId/cancel-appeal", orderController.cancelAppeal);
 app.put("/order/:orderId/status", orderController.updateOrderStatus);
+app.post("/order/:orderId/pod-confirm", orderController.confirmPodReceived);
+
+
+app.get("/vendor/metrics/advanced", vendorController.getAdvancedMetrics);
+app.put("/branch/:branchId/set-main", branchController.setMainBranch);
+app.put("/branch/:branchId/assign-manager", branchController.assignManager);
 
 // ── CHAT ──────────────────────────────────────────────────────────────────────
 // Flutter listens to Firestore directly for realtime messages.
@@ -153,6 +165,11 @@ app.put("/admin/config", adminController.updateConfig);
 
 cron.schedule("0 * * * *", async () => {
   await runAutoReleaseJob();
+});
+
+cron.schedule("* * * * *", async () => {
+  // Runs every minute — lightweight, only touches pending orders older than 30 min
+  await runAutoCancelJob();
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

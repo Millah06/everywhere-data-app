@@ -43,7 +43,8 @@ const placeOrder = async (req: any, res: any) => {
       .get()
       .then((doc) => doc.data()?.notificationToken as string | undefined);
 
-    const { vendorId, branchId, items, deliveryAddress } = req.body;
+    const { vendorId, branchId, items, deliveryAddress, paymentMethod } =
+      req.body;
 
     const config = await prisma.appConfig.findFirst();
     if (!config)
@@ -106,6 +107,15 @@ const placeOrder = async (req: any, res: any) => {
     const deliveryFee = zone.deliveryFee;
     const transactionFee = subtotal * (config.transactionFeePercent / 100);
     const totalAmount = subtotal + deliveryFee + transactionFee;
+
+    // After validating items, before creating order:
+    const vendor = await prisma.vendor.findUnique({ where: { id: vendorId } });
+
+    if (paymentMethod === "pay_on_delivery" && !vendor!.allowsPayOnDelivery) {
+      return res
+        .status(400)
+        .json({ message: "This vendor does not accept pay on delivery" });
+    }
 
     const transactionRef = generateUUID();
 
@@ -188,7 +198,9 @@ const placeOrder = async (req: any, res: any) => {
     });
 
     const commission = subtotal * (config.commissionPercent / 100);
-    await prisma.escrow.create({
+
+    if (paymentMethod !== "pay_on_delivery") {
+       await prisma.escrow.create({
       data: {
         orderId: order.id,
         amountHeld: totalAmount,
@@ -199,6 +211,7 @@ const placeOrder = async (req: any, res: any) => {
         ),
       },
     });
+    }
 
     await notify(branch.vendor.ownerId, "NEW_ORDER", {
       orderId: order.id,
@@ -342,6 +355,58 @@ const appealOrder = async (req: any, res: any) => {
     if (!order) return res.status(404).json({ message: "Order not found" });
     if (order.userId !== userId)
       return res.status(403).json({ message: "Unauthorized" });
+
+    // With this:
+    const appealableStatuses = [
+      "delivered",
+      "confirmed",
+      "preparing",
+      "outForDelivery",
+    ];
+    if (!appealableStatuses.includes(order.status)) {
+      return res.status(400).json({ message: "Cannot appeal this order" });
+    }
+
+    const updated = await prisma.order.update({
+      where: { id: orderId },
+      data: { status: "appealed", escrowStatus: "appealed" },
+      include: { items: true },
+    });
+
+    await prisma.escrow.update({
+      where: { orderId },
+      data: {
+        releaseStatus: "appealed",
+        appealReason: reason,
+        autoReleaseAt: new Date("2099-01-01"), // freeze — admin must resolve
+      },
+    });
+
+    await admin.firestore().collection("adminNotifications").add({
+      type: "ORDER_APPEALED",
+      orderId,
+      reason,
+      userId,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    res.json(updated);
+  } catch (e: any) {
+    res.status(401).json({ message: e.message });
+  }
+};
+
+const vendorAppealOrder = async (req: any, res: any) => {
+  try {
+    const userId = await checkAuth(req);
+
+    const { orderId } = req.params;
+    const { reason } = req.body;
+
+    const order = await prisma.order.findUnique({ where: { id: orderId } });
+    if (!order) return res.status(404).json({ message: "Order not found" });
+    if (order.userId !== userId)
+      return res.status(403).json({ message: "Unauthorized" });
     if (!["delivered", "completed"].includes(order.status)) {
       return res.status(400).json({ message: "This order cannot be appealed" });
     }
@@ -429,7 +494,7 @@ const updateOrderStatus = async (req: any, res: any) => {
 
     let updated: Order;
 
-     if (status === "cancelled") {
+    if (status === "cancelled") {
       await prisma.escrow.update({
         where: { orderId },
         data: { releaseStatus: "refunded", refundedAt: new Date() },
@@ -437,7 +502,7 @@ const updateOrderStatus = async (req: any, res: any) => {
 
       updated = await prisma.order.update({
         where: { id: orderId },
-        data: { escrowStatus: "refunded", updatedAt: new Date(), status  },
+        data: { escrowStatus: "refunded", updatedAt: new Date(), status },
         include: { items: true },
       });
 
@@ -451,7 +516,8 @@ const updateOrderStatus = async (req: any, res: any) => {
         const userOwnerBalance =
           vendorOwnerSnap.data()?.wallet.fiat.availableBalance || 0;
         const newVendorOwnerBalance = userOwnerBalance + order.totalAmount;
-        const userLockedBalance = vendorOwnerSnap.data()?.wallet.fiat.lockedBalance || 0;
+        const userLockedBalance =
+          vendorOwnerSnap.data()?.wallet.fiat.lockedBalance || 0;
         const newUserLockedBalance = userLockedBalance - order.totalAmount;
 
         transaction.update(vendorOwnerDoc, {
@@ -477,17 +543,92 @@ const updateOrderStatus = async (req: any, res: any) => {
       await recalculateVendorMetrics(order.vendorId);
     }
 
-
     updated = await prisma.order.update({
       where: { id: orderId },
       data: { status },
       include: { items: true },
     });
 
-   
     await notify(order.userId, "ORDER_STATUS_UPDATED", { orderId, status });
 
     res.json(updated);
+  } catch (e: any) {
+    res.status(401).json({ message: e.message });
+  }
+};
+
+const cancelAppeal = async (req: any, res: any) => {
+  try {
+    const userId = await checkAuth(req);
+    const { orderId } = req.params;
+
+    const order = await prisma.order.findUnique({ where: { id: orderId } });
+    if (!order) return res.status(404).json({ message: "Order not found" });
+    if (order.userId !== userId)
+      return res.status(403).json({ message: "Forbidden" });
+    if (order.status !== "appealed")
+      return res.status(400).json({ message: "Order is not under appeal" });
+
+    // Restore auto-release window from now
+    const config = await prisma.appConfig.findFirst();
+    const hours = config?.autoReleaseHours ?? 24;
+    const autoReleaseAt = new Date(Date.now() + hours * 60 * 60 * 1000);
+
+    await prisma.order.update({
+      where: { id: orderId },
+      data: { status: "delivered" },
+    });
+    await prisma.escrow.update({
+      where: { orderId },
+      data: { releaseStatus: "held", autoReleaseAt },
+    });
+
+    res.json({ message: "Appeal cancelled. Escrow timer restored." });
+  } catch (e: any) {
+    res.status(401).json({ message: e.message });
+  }
+};
+
+const confirmPodReceived = async (req: any, res: any) => {
+  try {
+    const userId = await checkAuth(req);
+    const { orderId } = req.params;
+
+    const order = await prisma.order.findUnique({ where: { id: orderId } });
+    if (!order) return res.status(404).json({ message: "Not found" });
+    if (order.paymentMethod !== "pay_on_delivery")
+      return res.status(400).json({ message: "Not a POD order" });
+    if (order.status !== "delivered")
+      return res.status(400).json({ message: "Order not delivered yet" });
+
+    const vendor = await prisma.vendor.findFirst({
+      where: { id: order.vendorId, ownerId: userId },
+    });
+    if (!vendor) return res.status(403).json({ message: "Forbidden" });
+
+    const config = await prisma.appConfig.findFirst();
+    const commissionPercent = config?.commissionPercent ?? 5;
+    const commission = order.subtotal * (commissionPercent / 100);
+
+    // Mark POD confirmed and deduct commission
+    // Commission is owed — log it for reconciliation
+    await prisma.order.update({
+      where: { id: orderId },
+      data: { status: "completed", podConfirmed: true },
+    });
+
+    // Log commission debt (you collect this separately)
+    await admin.firestore().collection("podCommissions").add({
+      orderId: order.id,
+      vendorId: order.vendorId,
+      subtotal: order.subtotal,
+      commission,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    res.json({
+      message: "POD confirmed. Commission due: ₦" + commission.toFixed(2),
+    });
   } catch (e: any) {
     res.status(401).json({ message: e.message });
   }
@@ -501,4 +642,7 @@ export default {
   appealOrder,
   getVendorOrders,
   updateOrderStatus,
+  cancelAppeal,
+  vendorAppealOrder,
+  confirmPodReceived,
 };

@@ -55,10 +55,14 @@ model Vendor {
   email                String       @default("")
   phone                String       @default("")
   cac                  String       @default("")
+  cacCertificateUrl    String  ?    @default("")
   rating               Float        @default(0)
   totalCompletedOrders Int          @default(0)
   completionRate       Float        @default(100)
   verified             Boolean      @default(false)
+  // existing...
+  allowsPayOnDelivery  Boolean @default(false)
+
   status               VendorStatus @default(approved)
   isVisible            Boolean      @default(true)
   createdAt            DateTime     @default(now())
@@ -72,6 +76,11 @@ model Vendor {
 model Branch {
   id                    String   @id @default(uuid())
   vendorId              String
+
+  isMainBranch          Boolean  @default(false)
+  
+  managerUid            String?  // Firebase UID of person managing this branch
+
   state                 String
   lga                   String
   area                  String
@@ -122,6 +131,10 @@ model Order {
   totalAmount    Float
   status         OrderStatus  @default(pending)
   escrowStatus   EscrowStatus @default(held)
+
+  // existing...
+  paymentMethod  String  @default("escrow")  // "escrow" | "pay_on_delivery"
+  podConfirmed   Boolean @default(false)     // vendor confirms cash received
 
   // Delivery address (flat — no FK, structured data)
   deliveryState  String

@@ -183,6 +183,58 @@ const deleteDeliveryZone = async (req: any, res: any) => {
   }
 };
 
+const setMainBranch = async (req: any, res: any) => {
+  try {
+    const userId = await checkAuth(req);
+    const { branchId } = req.params;
+
+    const branch = await prisma.branch.findUnique({
+      where: { id: branchId },
+      include: { vendor: true },
+    });
+    if (!branch) return res.status(404).json({ message: "Branch not found" });
+    if (branch.vendor.ownerId !== userId) return res.status(403).json({ message: "Forbidden" });
+
+    // Demote all, promote this one
+    await prisma.branch.updateMany({
+      where: { vendorId: branch.vendorId },
+      data: { isMainBranch: false },
+    });
+    await prisma.branch.update({
+      where: { id: branchId },
+      data: { isMainBranch: true },
+    });
+
+    res.json({ message: "Main branch updated" });
+  } catch (e: any) {
+    res.status(401).json({ message: e.message });
+  }
+};
+
+const assignManager = async (req: any, res: any) => {
+  try {
+    const userId = await checkAuth(req);
+    const { branchId } = req.params;
+    const { managerUid } = req.body;
+
+    const branch = await prisma.branch.findUnique({
+      where: { id: branchId },
+      include: { vendor: true },
+    });
+    if (!branch) return res.status(404).json({ message: "Branch not found" });
+    if (branch.vendor.ownerId !== userId) return res.status(403).json({ message: "Only vendor owner can assign managers" });
+
+    await prisma.branch.update({
+      where: { id: branchId },
+      data: { managerUid },
+    });
+
+    res.json({ message: "Manager assigned" });
+  } catch (e: any) {
+    res.status(401).json({ message: e.message });
+  }
+};
+
 export default {
   getBranchMenu,
   getDeliveryZones,
@@ -190,5 +242,7 @@ export default {
   updateBranch,
   deleteBranch,
   addDeliveryZone,
+  setMainBranch,
+  assignManager,
   deleteDeliveryZone,
 };

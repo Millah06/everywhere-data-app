@@ -8,7 +8,7 @@ export interface IVendor {
   id: string; ownerId: string; vendorType: VendorType; name: string; description: string;
   logo: string; isVisible: boolean; status: VendorStatus; rating: number;
   totalCompletedOrders: number; completionRate: number; verified: boolean;
-  phone: string; email: string; cac?: string; createdAt: Date; updatedAt: Date;
+  phone: string; email: string; cac?: string; createdAt: Date; updatedAt: Date; allowsPayOnDelivery: boolean;
 }
 export interface IBranch {
   id: string; vendorId: string; state: string; lga: string; area: string;
