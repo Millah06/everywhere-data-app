@@ -10,7 +10,7 @@ const getBranchMenu = async (req: any, res: any) => {
 
     const items = await prisma.menuItem.findMany({
       where: { branchId },
-      orderBy: { createdAt: "asc" },
+      orderBy: { createdAt: "desc" },
     });
 
     res.json(items);

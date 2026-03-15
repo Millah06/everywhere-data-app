@@ -42,6 +42,7 @@ enum EscrowStatus {
   released
   appealed
   refunded
+  noEscrow
 }
 
 model Vendor {

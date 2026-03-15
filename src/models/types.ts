@@ -1,7 +1,7 @@
 export type VendorType = 'restaurant' | 'grocery' | 'drinks' | 'retail';
 export type VendorStatus = 'pending' | 'approved' | 'rejected';
 export type OrderStatus = 'pending' | 'confirmed' | 'preparing' | 'outForDelivery' | 'delivered' | 'completed' | 'cancelled' | 'appealed';
-export type EscrowStatus = 'held' | 'released' | 'appealed' | 'refunded';
+export type EscrowStatus = 'held' | 'released' | 'appealed' | 'refunded' | 'noEscrow';
 export type EscrowReleaseStatus = 'pending' | 'released' | 'refunded';
 
 export interface IVendor {
