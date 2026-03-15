@@ -184,7 +184,7 @@ const placeOrder = async (req: any, res: any) => {
         transactionFee,
         totalAmount,
         status: "pending",
-        escrowStatus: "noEscrow",
+        escrowStatus: paymentMethod == 'pay_on_delivery' ? "noEscrow" : 'held',
         paymentMethod,
         deliveryState: deliveryAddress.state,
         deliveryLga: deliveryAddress.lga,
