@@ -14,7 +14,7 @@
 import { getFirestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
 import {prisma}  from "./prisma";
-import { generateReferralCode } from "../src/shared/utils/generateRefferalCode"
+import { generateReferralCode } from "./shared/utils/generateRefferalCode"
 
 const BATCH_SIZE = 100;
 
