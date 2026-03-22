@@ -1,4 +1,5 @@
-import admin from "../../webhook/utils/firebase";
+import admin from "firebase-admin";
+
 const createCardHolder = async (req: any, res: any) => {
   try {
     const userId = req.user?.id;
