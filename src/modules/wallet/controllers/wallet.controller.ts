@@ -132,10 +132,19 @@ export const paystackWebhook = async (req: any, res: any) => {
       return;
     }
 
+    const wallet = await prisma.wallet.findUnique({
+      where: {userId}
+    })
+
+     if (!wallet) {
+      console.error(`No wallet fund: ${reference}`);
+      return;
+    }
+
     // Credit wallet in a transaction
     await prisma.$transaction(async (tx) => {
       await tx.fiat.update({
-        where: { wallet: { userId: user.id } },
+        where: { walletId: wallet?.id },
         data: { availableBalance: { increment: amountInNaira } },
       });
 
@@ -202,9 +211,17 @@ export const internalTransfer = async (req: any, res: any) => {
         data: { availableBalance: { decrement: amount } },
       });
 
+      const wallet = await prisma.wallet.findUnique({
+      where: {userId : recipient.id}
+    })
+
+     if (!wallet) {
+      console.error(`No wallet fund:`);
+      return;
+    }
       // Credit recipient
       await tx.fiat.update({
-        where: { wallet: { userId: recipient.id } },
+        where: { walletId: wallet.id},
         data: { availableBalance: { increment: amount } },
       });
 
