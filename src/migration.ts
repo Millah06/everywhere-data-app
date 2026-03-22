@@ -13,7 +13,7 @@
 
 import { getFirestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
-import {prisma}  from "../src/prisma";
+import {prisma}  from "./prisma";
 import { generateReferralCode } from "../src/shared/utils/generateRefferalCode"
 
 const BATCH_SIZE = 100;
@@ -41,10 +41,13 @@ async function migrateUsers(): Promise<MigrationResult["users"]> {
   for (const doc of snapshot.docs) {
     const data = doc.data();
     const firestoreId = doc.id; // This is usually the Firebase UID
+    const userProfileDoc = await db.collection('userProfile').doc(firestoreId).get();
+    const profileData = userProfileDoc.data();
+    
 
     try {
       // Try to get the Firebase Auth record to confirm UID
-      let firebaseUid = data.firebaseUid ?? data.uid ?? firestoreId;
+      let firebaseUid =  firestoreId;
       try {
         await getAuth().getUser(firebaseUid);
       } catch {
@@ -80,9 +83,9 @@ async function migrateUsers(): Promise<MigrationResult["users"]> {
             create: {
               fiat: {
                 create: {
-                  availableBalance: data.walletBalance ?? data.balance ?? 0,
-                  lockedBalance: data.lockedBalance ?? 0,
-                  rewardBalance: data.rewardBalance ?? 0,
+                  availableBalance: data.wallet.fiat.availableBalance ?? data.balance ?? 0,
+                  lockedBalance: data.wallet.fiat.lockedBalance ?? 0,
+                  rewardBalance: data.wallet.fiat.rewardBalance ?? 0,
                 },
               },
             },
@@ -90,15 +93,15 @@ async function migrateUsers(): Promise<MigrationResult["users"]> {
           // Create user profile
           userProfile: {
             create: {
-              bio: data.bio ?? "",
-              avatarUrl: data.avatarUrl ?? data.photoURL ?? "",
+              bio: profileData!.bio ?? "",
+              avatarUrl: profileData!.avatar  ?? "",
               badges: data.badges ?? [],
               isVerified: data.isVerified ?? false,
               isPrivate: data.isPrivate ?? false,
               followersCount: data.followersCount ?? 0,
               followingCount: data.followingCount ?? 0,
-              postCount: data.postCount ?? 0,
-              totalEarnings: data.totalEarnings ?? 0,
+              postCount: profileData!.postCount ?? 0,
+              totalEarnings: profileData!.totalEarnings ?? 0,
             },
           },
         },
