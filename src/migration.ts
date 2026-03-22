@@ -42,7 +42,7 @@ async function migrateUsers(): Promise<MigrationResult["users"]> {
     const data = doc.data();
     const firestoreId = doc.id; // This is usually the Firebase UID
     const userProfileDoc = await db.collection('userProfiles').doc(firestoreId).get();
-    const profileData = userProfileDoc.data();
+    const profileData = userProfileDoc.exists ? userProfileDoc.data() : {};
     
 
     try {
@@ -83,7 +83,7 @@ async function migrateUsers(): Promise<MigrationResult["users"]> {
             create: {
               fiat: {
                 create: {
-                  availableBalance: data.wallet.fiat.availableBalance ?? data.balance ?? 0,
+                  availableBalance: data.balance ?? data.balance ?? 0,
                   lockedBalance: data.wallet.fiat.lockedBalance ?? 0,
                   rewardBalance: data.wallet.fiat.rewardBalance ?? 0,
                 },
