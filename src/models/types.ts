@@ -12,7 +12,7 @@ export interface IVendor {
 }
 export interface IBranch {
   id: string; vendorId: string; state: string; lga: string; area: string;
-  street: string; estimatedDeliveryTime: number; createdAt: Date;
+  street: string; estimatedDeliveryTime: number; createdAt: Date; managerUid: string; updatedAt: Date;
 }
 export interface IDeliveryZone {
   id: string; branchId: string; state: string; lga: string; area: string; deliveryFee: number;

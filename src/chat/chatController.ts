@@ -1,5 +1,4 @@
 import { prisma } from "../prisma";
-import { checkAuth } from "../webhook/utils/auth";
 import * as admin from "firebase-admin";
 import { QueryDocumentSnapshot } from "firebase-admin/firestore";
 
@@ -7,7 +6,7 @@ const phonePattern = /(\+?\d[\d\s\-]{8,}\d)/;
 
 const sendMessage = async (req: any, res: any) => {
   try {
-    const userId = await checkAuth(req);
+    const userId = req.user?.id;
 
     const { orderId } = req.params;
     const { message, senderName } = req.body;
@@ -71,7 +70,7 @@ const sendMessage = async (req: any, res: any) => {
 
 const getMessages = async (req: any, res: any) => {
   try {
-    const userId = await checkAuth(req);
+    const userId = req.user?.id;
 
     const { orderId } = req.params;
 
@@ -107,7 +106,7 @@ const getMessages = async (req: any, res: any) => {
 
 const adminSendMessage = async (req: any, res: any) => {
   try {
-    await checkAuth(req);
+    if (!req.user) return res.status(401).json({ message: "Unauthorized" });
 
     const { orderId } = req.params;
     const { message } = req.body;

@@ -12,6 +12,26 @@ datasource db {
   provider = "postgresql"
 }
 
+// ── ENUMS ─────────────────────────────────────────────────────────────────────
+
+enum TransactionStatus {
+  pending
+  failed // ← fixed from "failde"
+  success
+}
+
+enum TransferStatus {
+  processing
+  success
+  failed
+}
+
+enum role {
+  user
+  vendor
+  admin
+}
+
 enum VendorType {
   restaurant
   grocery
@@ -45,42 +65,332 @@ enum EscrowStatus {
   noEscrow
 }
 
+// ── MODELS ───────────────────────────────────────────────────────────────────
+
+model User {
+  id                   String    @id @default(uuid())
+  firebaseUid          String    @unique
+  name                 String
+  email                String    @unique
+  phone                String    @default("")
+  role                 role      @default(user)
+  active               Boolean   @default(true)
+  pin                  String?   // hashed wallet PIN for transaction auth
+  notificationsEnabled Boolean   @default(true)
+  notificationToken    String?
+  referralCode         String?   @unique
+  referredBy           String?
+  transferUid          String    @unique
+  deletedAt            DateTime? // soft delete
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  kyc            Kyc?
+  virtualAccount VirtualAccount[]
+  wallet         Wallet?
+  orders         Order[]
+  userProfile    UserProfile?
+  transactions   Transaction[]
+  reviews        Review[]
+  notifications  Notification[]
+
+  vendor         Vendor[]
+
+  sentTransfers     Transfer[] @relation("TransferSender")
+  receivedTransfers Transfer[] @relation("TransferReceiver")
+  posts             Post[]
+  postLikes         PostLike[]
+  postComments      PostComment[]
+  savedPosts        SavedPost[]
+  postViewTrackers  PostViewTracker[] @relation("PostViews")
+
+  @@index([firebaseUid, createdAt])
+  @@index([email])
+  @@index([transferUid])
+}
+
+model UserProfile {
+  id                     String   @id @default(uuid())
+  userId                 String   @unique
+  bio                    String   @default("")
+  avatarUrl              String   @default("")
+  coverPhotoUrl          String   @default("")
+  badges                 String[]
+
+  followersCount         Int      @default(0)
+  followingCount         Int      @default(0)
+
+  postCount              Int      @default(0)
+
+  isPrivate              Boolean  @default(false)
+  isVerified             Boolean  @default(false)
+
+  totalEarnings          Float    @default(0)
+
+  allowFollwersToMessage Boolean  @default(false)
+  weeklyEarned           Float    @default(0)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VirtualAccount {
+  id            String    @id @default(uuid())
+  userId        String
+  bankName      String
+  accountNumber String
+  status        String    @default("active")
+  expiresAt     DateTime? // some DVAs expire
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Wallet {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  fiat Fiat?
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Fiat {
+  id               String   @id @default(uuid())
+  walletId         String   @unique
+  currency         String   @default("NGN") // ISO 4217 — future-proofs multi-currency
+  availableBalance Float    @default(0)
+  lockedBalance    Float    @default(0)
+  rewardBalance    Float    @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+}
+
+model Transaction {
+  id              String            @id @default(uuid())
+  userId          String
+  type            String // "credit" | "debit" | "utility" | "wallet" | etc.
+  amount          Float
+  transactionRef  String?
+  humanRef        String?
+  clientRequestId String?           @unique
+  metaData        Json?
+  status          TransactionStatus @default(pending)
+  message         String?
+  transferId      String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transfer Transfer? @relation(fields: [transferId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([status])
+  @@index([userId, createdAt])
+  @@index([transactionRef])
+  @@index([humanRef])
+}
+
+model Transfer {
+  id                String         @id @default(uuid())
+  senderId          String?
+  receiverId        String?
+  amount            Float
+  status            TransferStatus @default(processing)
+  clientRequestId   String?        @unique
+  humanRef          String?
+  mode              String         @default("wallet")
+  paystackRecipient String?
+  metaData          Json?
+  providerResponse  Json?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  sender   User? @relation("TransferSender", fields: [senderId], references: [id], onDelete: SetNull)
+  receiver User? @relation("TransferReceiver", fields: [receiverId], references: [id], onDelete: SetNull)
+
+  transactions Transaction[]
+
+  @@index([senderId])
+  @@index([receiverId])
+  @@index([status])
+}
+
+model Post {
+  id                 String    @id @default(uuid())
+  userId             String
+  userName           String    @default("Anonymous")
+  userAvatar         String?
+  text               String    @default("")
+  imageUrl           String?
+  hashtags           String[]
+  likeCount          Int       @default(0)
+  commentCount       Int       @default(0)
+  rewardCount        Int       @default(0)
+  rewardPointsTotal  Float     @default(0)
+  viewCount          Int       @default(0)
+  isBoosted          Boolean   @default(false)
+  boostExpiresAt     DateTime?
+  algorithmScore     Float     @default(10)
+  isRepost           Boolean   @default(false)
+  originalPostId     String?
+  originalUserName   String?
+  score              Float     @default(0)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  likes    PostLike[]
+  comments PostComment[]
+  savedBy       SavedPost[]
+  viewTrackers  PostViewTracker[]
+
+  @@index([userId, createdAt])
+  @@index([algorithmScore, createdAt])
+  @@index([isBoosted, createdAt])
+  @@index([createdAt])
+}
+
+model PostLike {
+  postId String
+  userId String // Prisma User.id (authenticated user)
+
+  createdAt DateTime @default(now())
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([postId, userId])
+  @@index([userId])
+}
+
+model PostComment {
+  id         String   @id @default(uuid())
+  postId     String
+  userId     String
+  userName   String   @default("Anonymous")
+  userAvatar String?
+  text       String
+  createdAt  DateTime @default(now())
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([postId, createdAt])
+}
+
+model SavedPost {
+  userId  String
+  postId  String
+  savedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@id([userId, postId])
+  @@index([userId, savedAt])
+}
+
+model Repost {
+  id             String   @id @default(uuid())
+  repostPostId   String   @unique
+  originalPostId String
+  reposterId     String
+  createdAt      DateTime @default(now())
+
+  @@index([originalPostId])
+  @@index([reposterId])
+}
+
+model PostViewTracker {
+  postId       String
+  viewerId     String
+  lastViewedAt DateTime
+  viewCount    Int      @default(1)
+
+  post   Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  viewer User @relation("PostViews", fields: [viewerId], references: [id], onDelete: Cascade)
+
+  @@id([postId, viewerId])
+}
+
+model Kyc {
+  id        String   @id @default(uuid())
+  status    String   @default("unverified") // unverified | pending | verified | rejected
+  userId    String   @unique
+  document  Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  title     String
+  body      String
+  type      String   @default("general") // "transaction" | "promo" | "system" | "general"
+  read      Boolean  @default(false)
+  metaData  Json?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
+  @@index([createdAt])
+}
+
 model Vendor {
-  id                   String       @id @default(uuid())
+  id                   String     @id @default(uuid())
+
   ownerId              String // Firebase UID of the vendor owner
+
+
   vendorType           VendorType
   name                 String
   description          String
-  logo                 String       @default("")
-  coverPhoto           String       @default("")
-  email                String       @default("")
-  phone                String       @default("")
-  cac                  String       @default("")
-  cacCertificateUrl    String  ?    @default("")
-  rating               Float        @default(0)
-  totalCompletedOrders Int          @default(0)
-  completionRate       Float        @default(100)
-  verified             Boolean      @default(false)
+  logo                 String     @default("")
+  coverPhoto           String     @default("")
+  email                String     @default("")
+  phone                String     @default("")
+  cac                  String     @default("")
+  cacCertificateUrl    String?    @default("")
+  rating               Float      @default(0)
+  totalCompletedOrders Int        @default(0)
+  completionRate       Float      @default(100)
+  verified             Boolean    @default(false)
   // existing...
-  allowsPayOnDelivery  Boolean @default(false)
+  allowsPayOnDelivery  Boolean    @default(false)
 
-  status               VendorStatus @default(approved)
-  isVisible            Boolean      @default(true)
-  createdAt            DateTime     @default(now())
-  updatedAt            DateTime     @updatedAt
+  status    VendorStatus @default(approved)
+  isVisible Boolean      @default(true)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
 
   branches Branch[]
   orders   Order[]
   reviews  Review[]
+
+  user User              @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 }
 
 model Branch {
-  id                    String   @id @default(uuid())
-  vendorId              String
+  id       String @id @default(uuid())
+  vendorId String
 
-  isMainBranch          Boolean  @default(false)
-  
-  managerUid            String?  // Firebase UID of person managing this branch
+  isMainBranch Boolean @default(false)
+
+  managerId String? // Firebase UID of person managing this branch
 
   state                 String
   lga                   String
@@ -93,6 +403,15 @@ model Branch {
   deliveryZones DeliveryZone[]
   menuItems     MenuItem[]
   orders        Order[]
+
+  @@index([vendorId])
+}
+
+model ManagerBranchMetrics {
+  id          String   @id @default(uuid())
+  managerId   String   @unique
+  date        DateTime
+  ordersCount Int      @default(0)
 }
 
 model DeliveryZone {
@@ -134,8 +453,8 @@ model Order {
   escrowStatus   EscrowStatus @default(held)
 
   // existing...
-  paymentMethod  String  @default("escrow")  // "escrow" | "pay_on_delivery"
-  podConfirmed   Boolean @default(false)     // vendor confirms cash received
+  paymentMethod String  @default("escrow") // "escrow" | "pay_on_delivery"
+  podConfirmed  Boolean @default(false) // vendor confirms cash received
 
   // Delivery address (flat — no FK, structured data)
   deliveryState  String
@@ -154,8 +473,14 @@ model Order {
 
   vendor Vendor      @relation(fields: [vendorId], references: [id])
   branch Branch      @relation(fields: [branchId], references: [id])
+  user   User        @relation(fields: [userId], references: [id])
   items  OrderItem[]
   escrow Escrow?
+
+  @@index([createdAt])
+  @@index([userId])
+  @@index([status])
+  @@index([branchId])
 }
 
 model OrderItem {
@@ -194,6 +519,7 @@ model Review {
   createdAt DateTime @default(now())
 
   vendor Vendor @relation(fields: [vendorId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
 }
 
 model AppConfig {
@@ -203,6 +529,11 @@ model AppConfig {
   appealWindowHours     Int    @default(48)
   chatCloseHours        Int    @default(72)
   commissionPercent     Float  @default(5)
+  fundingFees           Float  @default(0)
+  bonusAirtime          Float  @default(0)
+  bonusData             Float  @default(0)
+  bonusCable            Float  @default(0)
+  bonusElectric         Float  @default(0)
 }
 
 // Location hierarchy — seeded from your location data
