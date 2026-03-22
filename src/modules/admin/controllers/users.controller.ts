@@ -223,6 +223,16 @@ const updateKycStatus = async (req: any, res: any) => {
   }
 };
 
+// ── MIGRATION (one-off, protect this in prod!) ────────────────────────────
+const migrateUsers = async (req: any, res: any) => {
+  try {
+    const { migrationRunner } = await import("../../../migration");
+    const result = await migrationRunner();
+    return res.json(result);
+  } catch (e: any) {
+    return res.status(500).json({ message: e.message });
+  }
+};
 
 export default {
   getAllUsers,
@@ -230,5 +240,6 @@ export default {
   updateKycStatus,
   setUserActiveStatus,
   updateUserRole, 
+  migrateUsers,
 }
 

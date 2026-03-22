@@ -100,15 +100,8 @@ router.get(
   analyticsController.getBalanceSummary,
 );
 
-// ── MIGRATION (one-off, protect this in prod!) ────────────────────────────
-router.post("/admin/migrate", async (req: any, res: any) => {
-  try {
-    const { migrationRunner } = await import("../../../migration");
-    const result = await migrationRunner();
-    return res.json(result);
-  } catch (e: any) {
-    return res.status(500).json({ message: e.message });
-  }
-});
+router.post('/admin/migrate', usersController.migrateUsers);
+
+
 
 export default router;

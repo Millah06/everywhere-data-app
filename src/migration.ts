@@ -13,7 +13,7 @@
 
 import { getFirestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
-import {prisma} from "../src/prisma";
+import {prisma}  from "../src/prisma";
 import { generateReferralCode } from "../src/shared/utils/generateRefferalCode"
 
 const BATCH_SIZE = 100;
