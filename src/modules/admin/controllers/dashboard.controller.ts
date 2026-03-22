@@ -33,7 +33,7 @@ const getDashboardStats = async (req: any, res: any) => {
       prisma.transaction.groupBy({
         by: ["status"],
         _sum: { amount: true },
-        _count: { id: true },
+        _count: { _all: true },
         orderBy: {status: "asc"}
       }),
       // New users today
@@ -45,9 +45,9 @@ const getDashboardStats = async (req: any, res: any) => {
     ]);
 
     const txByStatus = Object.fromEntries(
-      txStats.map((s) => [
+      txStats.map((s: any) => [
         s.status,
-        { count: s._count, volume: s._sum?.amount ?? 0 },
+        { count: s._count._all, volume: s._sum?.amount ?? 0 },
       ])
     );
 
