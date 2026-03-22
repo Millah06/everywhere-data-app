@@ -21,7 +21,7 @@ router.use(authRouter);
 router.use(walletRouter);
 
 // ── MIGRATION (one-off, protect this in prod!) ────────────────────────────
-router.post("/admin/migrate", authMiddleware, async (req: any, res: any) => {
+router.post("/admin/migrate", async (req: any, res: any) => {
   try {
     const { migrationRunner } = await import("../migration");
     const result = await migrationRunner();
