@@ -41,7 +41,7 @@ async function migrateUsers(): Promise<MigrationResult["users"]> {
   for (const doc of snapshot.docs) {
     const data = doc.data();
     const firestoreId = doc.id; // This is usually the Firebase UID
-    const userProfileDoc = await db.collection('userProfile').doc(firestoreId).get();
+    const userProfileDoc = await db.collection('userProfiles').doc(firestoreId).get();
     const profileData = userProfileDoc.data();
     
 
