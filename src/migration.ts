@@ -20,7 +20,7 @@ const BATCH_SIZE = 100;
 
 interface MigrationResult {
   users: { migrated: number; skipped: number; failed: string[] };
-  transactions: { migrated: number; skipped: number; failed: string[] };
+  
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -41,8 +41,6 @@ async function migrateUsers(): Promise<MigrationResult["users"]> {
   for (const doc of snapshot.docs) {
     const data = doc.data();
     const firestoreId = doc.id; // This is usually the Firebase UID
-    const userProfileDoc = await db.collection('userProfiles').doc(firestoreId).get();
-    const profileData = userProfileDoc.exists ? userProfileDoc.data() : {};
     
 
     try {
@@ -93,15 +91,15 @@ async function migrateUsers(): Promise<MigrationResult["users"]> {
           // Create user profile
           userProfile: {
             create: {
-              bio: profileData!.bio ?? "",
-              avatarUrl: profileData!.avatar  ?? "",
+              bio: data.bio ?? "",
+              avatarUrl: data.avatar  ?? "",
               badges: data.badges ?? [],
               isVerified: data.isVerified ?? false,
               isPrivate: data.isPrivate ?? false,
               followersCount: data.followersCount ?? 0,
               followingCount: data.followingCount ?? 0,
-              postCount: profileData!.postCount ?? 0,
-              totalEarnings: profileData!.totalEarnings ?? 0,
+              postCount: data.postCount ?? 0,
+              totalEarnings: data.totalEarnings ?? 0,
             },
           },
         },
@@ -128,134 +126,6 @@ async function migrateUsers(): Promise<MigrationResult["users"]> {
   return { migrated, skipped, failed };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// TRANSACTIONS
-// ─────────────────────────────────────────────────────────────────────────────
-
-async function migrateTransactions(): Promise<MigrationResult["transactions"]> {
-  const db = getFirestore();
-  let migrated = 0;
-  let skipped = 0;
-  const failed: string[] = [];
-
-  console.log("💳 Starting transaction migration...");
-
-  // Build a map of firebaseUid → postgres userId for lookups
-  const users = await prisma.user.findMany({ select: { id: true, firebaseUid: true } });
-  const uidToId = Object.fromEntries(users.map((u) => [u.firebaseUid, u.id]));
-
-  // Handle both "transactions" and "transfers" collections
-  const collections = ["transactions", "transfers"];
-
-  for (const collectionName of collections) {
-    const snapshot = await db.collection(collectionName).get();
-    console.log(`   Found ${snapshot.size} docs in ${collectionName}.`);
-
-    for (const doc of snapshot.docs) {
-      const data = doc.data();
-
-      try {
-        // Determine the postgres userId
-        const firebaseUid = data.userId ?? data.uid ?? data.firebaseUid;
-        const postgresUserId = uidToId[firebaseUid];
-
-        if (!postgresUserId) {
-          console.warn(`   ⚠️  No Postgres user found for uid ${firebaseUid} (doc ${doc.id})`);
-          skipped++;
-          continue;
-        }
-
-        // Normalise status
-        const rawStatus = (data.status ?? "success").toLowerCase();
-        const status =
-          rawStatus === "successful" || rawStatus === "success"
-            ? "success"
-            : rawStatus === "pending"
-            ? "pending"
-            : "failed";
-
-        // Normalise type
-        const type =
-          (data.type ?? "").toLowerCase().includes("credit") ||
-          (data.type ?? "").toLowerCase().includes("deposit") ||
-          (data.type ?? "").toLowerCase().includes("fund")
-            ? "credit"
-            : "debit";
-
-        await prisma.transaction.upsert({
-          where: {
-            // Use clientRequestId if present, otherwise use doc.id
-            clientRequestId: data.clientRequestId ?? doc.id,
-          },
-          create: {
-            userId: postgresUserId,
-            type,
-            amount: data.amount ?? 0,
-            transactionRef: data.transactionRef ?? data.reference ?? data.ref ?? null,
-            clientRequestId: data.clientRequestId ?? doc.id,
-            status: status as any,
-            message: data.message ?? data.description ?? data.narration ?? null,
-            metaData: { ...data, _migratedFrom: collectionName, _firestoreId: doc.id },
-            createdAt: data.createdAt?.toDate?.() ?? new Date(),
-            updatedAt: data.updatedAt?.toDate?.() ?? new Date(),
-          },
-          update: {
-            status: status as any,
-          },
-        });
-
-        migrated++;
-      } catch (e: any) {
-        console.error(`   ❌ Failed to migrate ${collectionName}/${doc.id}: ${e.message}`);
-        failed.push(doc.id);
-      }
-    }
-  }
-
-  console.log(`✅ Transactions: ${migrated} migrated, ${skipped} skipped, ${failed.length} failed.\n`);
-  return { migrated, skipped, failed };
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// KYC
-// ─────────────────────────────────────────────────────────────────────────────
-
-async function migrateKyc(): Promise<void> {
-  const db = getFirestore();
-  let migrated = 0;
-
-  const kycSnap = await db.collection("kyc").get();
-  if (kycSnap.empty) {
-    console.log("ℹ️  No kyc collection found — skipping.\n");
-    return;
-  }
-
-  const users = await prisma.user.findMany({ select: { id: true, firebaseUid: true } });
-  const uidToId = Object.fromEntries(users.map((u) => [u.firebaseUid, u.id]));
-
-  console.log("🪪 Starting KYC migration...");
-
-  for (const doc of kycSnap.docs) {
-    const data = doc.data();
-    const postgresUserId = uidToId[data.userId ?? doc.id];
-    if (!postgresUserId) continue;
-
-    await prisma.kyc.upsert({
-      where: { userId: postgresUserId },
-      create: {
-        userId: postgresUserId,
-        status: data.status ?? "unverified",
-        document: data.document ?? data.documents ?? null,
-        createdAt: data.createdAt?.toDate?.() ?? new Date(),
-        updatedAt: data.updatedAt?.toDate?.() ?? new Date(),
-      },
-      update: { status: data.status ?? "unverified" },
-    });
-    migrated++;
-  }
-
-  console.log(`✅ KYC: ${migrated} records migrated.\n`);
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // RUNNER
@@ -266,13 +136,12 @@ export async function migrationRunner(): Promise<MigrationResult> {
   const start = Date.now();
 
   const userResult = await migrateUsers();
-  const txResult = await migrateTransactions();
-  await migrateKyc();
+   
 
   const elapsed = ((Date.now() - start) / 1000).toFixed(1);
   console.log(`\n🏁 Migration complete in ${elapsed}s\n`);
 
-  return { users: userResult, transactions: txResult };
+  return { users: userResult };
 }
 
 // Run directly with ts-node
