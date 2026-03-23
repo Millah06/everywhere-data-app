@@ -14,6 +14,7 @@ import { getFirestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
 import { prisma } from "./prisma";
 import { generateReferralCode } from "./shared/utils/generateRefferalCode";
+import { generate11DigitId } from "./transferUid";
 
 interface MigrationResult {
   users: { migrated: number; skipped: number; failed: Array<{ id: string; reason: string }> };
@@ -22,6 +23,8 @@ interface MigrationResult {
 // ─────────────────────────────────────────────────────────────────────────────
 // USERS
 // ─────────────────────────────────────────────────────────────────────────────
+
+ 
 
 async function migrateUsers(): Promise<MigrationResult["users"]> {
   const db = getFirestore();
@@ -86,7 +89,7 @@ async function migrateUsers(): Promise<MigrationResult["users"]> {
         where: { firebaseUid },
         create: {
           firebaseUid,
-          transferUid: data.transferUid ?? firebaseUid,
+          transferUid: generate11DigitId(),
           name: data.name ?? data.displayName ?? "Unknown",
           email: data.email ?? "",
           phone: data.phone ?? data.phoneNumber ?? "",
