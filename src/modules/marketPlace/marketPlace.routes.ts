@@ -54,7 +54,9 @@ router.post("/menu/:itemId/upload-image", upload.single("image"), uploadControll
 // NOTE: /order/mine and /order/vendor/list MUST come before /order/:orderId
 router.post("/order/place", orderController.placeOrder);
 router.get("/order/mine", orderController.getMyOrders);
+
 router.get("/order/vendor/list", orderController.getManagerOrders);
+
 router.get("/order/:orderId", orderController.getOrderById);
 router.post("/order/:orderId/confirm", orderController.confirmDelivery);
 router.post("/order/:orderId/appeal", orderController.appealOrder);
