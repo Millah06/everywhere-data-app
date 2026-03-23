@@ -1,8 +1,8 @@
-import { randomInt } from "crypto";
+import { customAlphabet } from "nanoid";
 
-export function generate11DigitId(): string {
-  const timestamp = Date.now().toString().slice(-8); // last 8 digits
-  const randomPart = randomInt(0, 1000).toString().padStart(3, "0");
+const nanoid = customAlphabet("23456789", 8);
 
-  return timestamp + randomPart; // always 11 digits
-}
+/**
+ * Generates a unique, human-readable referral code e.g. "KF7X2QPM"
+ */
+export const generate11DigitId = (): string => `1${nanoid()}`;
