@@ -181,9 +181,7 @@ const refundTransaction = async (req: any, res: any) => {
 const manualCredit = async (req: any, res: any) => {
   try {
 
-    const userId = req.user?.id;
-
-    const { amount, reason } = req.body;
+    const { amount, reason, userId } = req.body;
 
     if (!userId || !amount || !reason) {
       return res.status(400).json({ message: "userId, amount and reason are required." });
@@ -229,9 +227,8 @@ const manualCredit = async (req: any, res: any) => {
  */
 const manualDebit = async (req: any, res: any) => {
   try {
-    const userId = req.user?.id;
 
-    const { amount, reason } = req.body;
+    const { amount, reason, userId } = req.body;
 
     if (!userId || !amount || !reason) {
       return res.status(400).json({ message: "userId, amount and reason are required." });
