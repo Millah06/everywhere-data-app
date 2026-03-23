@@ -92,7 +92,7 @@ async function migrateUsers(): Promise<MigrationResult["users"]> {
           phone: data.phone ?? data.phoneNumber ?? "",
           role: data.role ?? "user",
           active: data.active ?? data.isActive ?? true,
-          referralCode: data.referralCode ?? generateReferralCode(),
+          referralCode: generateReferralCode(),
           referredBy: data.referredBy ?? null,
           notificationsEnabled: data.notificationsEnabled ?? true,
           notificationToken: data.notificationToken ?? data.fcmToken ?? null,
