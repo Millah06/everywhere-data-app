@@ -1,4 +1,5 @@
-import {prisma} from "../../../prisma"
+import { availableMemory } from "process";
+import { prisma } from "../../../prisma";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TRANSACTIONS
@@ -74,7 +75,8 @@ const getAllTransactions = async (req: any, res: any) => {
 const searchTransactionByRef = async (req: any, res: any) => {
   try {
     const { ref } = req.query as { ref: string };
-    if (!ref) return res.status(400).json({ message: "ref query param is required." });
+    if (!ref)
+      return res.status(400).json({ message: "ref query param is required." });
 
     const transaction = await prisma.transaction.findFirst({
       where: { transactionRef: { contains: ref, mode: "insensitive" } },
@@ -83,7 +85,8 @@ const searchTransactionByRef = async (req: any, res: any) => {
       },
     });
 
-    if (!transaction) return res.status(404).json({ message: "Transaction not found." });
+    if (!transaction)
+      return res.status(404).json({ message: "Transaction not found." });
 
     return res.json(transaction);
   } catch (e: any) {
@@ -106,15 +109,22 @@ const refundTransaction = async (req: any, res: any) => {
       include: { user: true },
     });
 
-    if (!original) return res.status(404).json({ message: "Transaction not found." });
+    if (!original)
+      return res.status(404).json({ message: "Transaction not found." });
     if (original.status !== "success") {
-      return res.status(400).json({ message: "Only successful transactions can be refunded." });
+      return res
+        .status(400)
+        .json({ message: "Only successful transactions can be refunded." });
     }
     if (original.type !== "debit") {
-      return res.status(400).json({ message: "Only debit transactions can be refunded." });
+      return res
+        .status(400)
+        .json({ message: "Only debit transactions can be refunded." });
     }
 
-     const fiat = await prisma.fiat.findFirst({ where: { wallet: { userId: original.userId } } });
+    const fiat = await prisma.fiat.findFirst({
+      where: { wallet: { userId: original.userId } },
+    });
     if (!fiat) return res.status(404).json({ message: "Wallet not found." });
 
     // Check if already refunded (look for a refund record)
@@ -124,7 +134,9 @@ const refundTransaction = async (req: any, res: any) => {
       },
     });
     if (existingRefund) {
-      return res.status(409).json({ message: "This transaction has already been refunded." });
+      return res
+        .status(409)
+        .json({ message: "This transaction has already been refunded." });
     }
 
     const refundRef = `RFD-${original.transactionRef ?? transactionId}`;
@@ -158,7 +170,7 @@ const refundTransaction = async (req: any, res: any) => {
         where: { id: transactionId },
         data: {
           metaData: {
-            ...(original.metaData as object ?? {}),
+            ...((original.metaData as object) ?? {}),
             refunded: true,
             refundRef,
             refundedAt: new Date().toISOString(),
@@ -180,13 +192,25 @@ const refundTransaction = async (req: any, res: any) => {
  */
 const manualCredit = async (req: any, res: any) => {
   try {
+    type WalletOperation =
+      | "availableBalance"
+      | "lockedBalance"
+      | "rewardBalance";
 
-    const { amount, reason, userId } = req.body;
+    const { amount, reason, userId, operationBalance } = req.body as {
+      operationBalance: WalletOperation;
+      amount: number;
+      reason: string;
+      userId: string;
+    };
 
     if (!userId || !amount || !reason) {
-      return res.status(400).json({ message: "userId, amount and reason are required." });
+      return res
+        .status(400)
+        .json({ message: "userId, amount and reason are required." });
     }
-    if (amount <= 0) return res.status(400).json({ message: "Amount must be positive." });
+    if (amount <= 0)
+      return res.status(400).json({ message: "Amount must be positive." });
 
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) return res.status(404).json({ message: "User not found." });
@@ -195,10 +219,18 @@ const manualCredit = async (req: any, res: any) => {
 
     const fiat = await prisma.fiat.findFirst({ where: { wallet: { userId } } });
 
+    const fieldMap = {
+      availableBalance: "availableBalance",
+      rewardBalance: "rewardBalance",
+      lockedBalance: "lockedBalance",
+    };
+
+    const field = fieldMap[operationBalance];
+
     await prisma.$transaction(async (tx) => {
       await tx.fiat.update({
-        where: { id: fiat?.id},
-        data: { availableBalance: { increment: amount } },
+        where: { id: fiat?.id },
+        data: { [field]: { increment: amount } },
       });
 
       await tx.transaction.create({
@@ -214,7 +246,10 @@ const manualCredit = async (req: any, res: any) => {
       });
     });
 
-    return res.json({ message: `₦${amount} credited to ${user.name}.`, reference: ref });
+    return res.json({
+      message: `₦${amount} credited to ${user.name}.`,
+      reference: ref,
+    });
   } catch (e: any) {
     return res.status(500).json({ message: e.message });
   }
@@ -227,25 +262,50 @@ const manualCredit = async (req: any, res: any) => {
  */
 const manualDebit = async (req: any, res: any) => {
   try {
+    type WalletOperation =
+      | "availableBalance"
+      | "lockedBalance"
+      | "rewardBalance";
 
-    const { amount, reason, userId } = req.body;
+    const { amount, reason, userId, operationBalance } = req.body as {
+      operationBalance: WalletOperation;
+      amount: number;
+      reason: string;
+      userId: string;
+    };
+
+   
 
     if (!userId || !amount || !reason) {
-      return res.status(400).json({ message: "userId, amount and reason are required." });
+      return res
+        .status(400)
+        .json({ message: "userId, amount and reason are required." });
     }
+
+     const fieldMap = {
+      availableBalance: "availableBalance",
+      rewardBalance: "rewardBalance",
+      lockedBalance: "lockedBalance",
+    };
+
+    const field = fieldMap[operationBalance];
 
     const fiat = await prisma.fiat.findFirst({ where: { wallet: { userId } } });
     if (!fiat) return res.status(404).json({ message: "Wallet not found." });
-    if (fiat.availableBalance < amount) {
-      return res.status(400).json({ message: "Insufficient balance for this debit." });
+    if ((fiat as any)[field] < amount) {
+      return res
+        .status(400)
+        .json({ message: "Insufficient balance for this debit." });
     }
 
     const ref = `MDB-${Date.now()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
 
+    
+
     await prisma.$transaction(async (tx) => {
       await tx.fiat.update({
         where: { id: fiat.id },
-        data: { availableBalance: { decrement: amount } },
+        data: { [field]: { decrement: amount } },
       });
 
       await tx.transaction.create({
@@ -261,7 +321,10 @@ const manualDebit = async (req: any, res: any) => {
       });
     });
 
-    return res.json({ message: `₦${amount} debited from user.`, reference: ref });
+    return res.json({
+      message: `₦${amount} debited from user.`,
+      reference: ref,
+    });
   } catch (e: any) {
     return res.status(500).json({ message: e.message });
   }
@@ -273,5 +336,4 @@ export default {
   manualDebit,
   refundTransaction,
   searchTransactionByRef,
-
-}
+};
