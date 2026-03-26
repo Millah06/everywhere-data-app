@@ -355,6 +355,7 @@ model Vendor {
 
   ownerId              String // Firebase UID of the vendor owner
 
+  ownerFirebaseUid     String
 
   vendorType           VendorType
   name                 String
