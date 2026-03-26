@@ -126,6 +126,7 @@ const applyAsVendor = async (req: any, res: any) => {
     const vendor = await prisma.vendor.create({
       data: {
         ownerId: userId,
+        ownerFirebaseUid : req.user.uid,
         name,
         vendorType,
         description,
