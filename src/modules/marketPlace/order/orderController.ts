@@ -8,6 +8,7 @@ import {
   prismaTransactionStatusToApi,
   withTransactionStatus,
 } from "../../../shared/utils/transactionResponse";
+import { FieldValue } from "firebase-admin/firestore";
 
 const notify = async (
   userId: string,
@@ -40,12 +41,12 @@ const placeOrder = async (req: any, res: any) => {
 
     const tok = await prisma.user.findUnique({
       where: {
-        id: userId
+        id: userId,
       },
       select: {
-        notificationToken: true
-      }
-    })
+        notificationToken: true,
+      },
+    });
 
     const clientRequestId = "";
 
@@ -163,7 +164,7 @@ const placeOrder = async (req: any, res: any) => {
         transactionFee,
         totalAmount,
         status: "pending",
-        escrowStatus: paymentMethod == 'pay_on_delivery' ? "noEscrow" : 'held',
+        escrowStatus: paymentMethod == "pay_on_delivery" ? "noEscrow" : "held",
         paymentMethod,
         deliveryState: deliveryAddress.state,
         deliveryLga: deliveryAddress.lga,
@@ -180,18 +181,31 @@ const placeOrder = async (req: any, res: any) => {
     const commission = subtotal * (config.commissionPercent / 100);
 
     if (paymentMethod !== "pay_on_delivery") {
-       await prisma.escrow.create({
-      data: {
-        orderId: order.id,
-        amountHeld: totalAmount,
-        commission,
-        releaseStatus: "held",
-        autoReleaseAt: new Date(
-          Date.now() + config.autoReleaseHours * 60 * 60 * 1000,
-        ),
-      },
-    });
+      await prisma.escrow.create({
+        data: {
+          orderId: order.id,
+          amountHeld: totalAmount,
+          commission,
+          releaseStatus: "held",
+          autoReleaseAt: new Date(
+            Date.now() + config.autoReleaseHours * 60 * 60 * 1000,
+          ),
+        },
+      });
     }
+
+    const chatRef = admin.firestore().collection("orderChats").doc(order.id);
+
+    await chatRef.set(
+      {
+        participants: FieldValue.arrayUnion([ userId, vendorId]),
+        isAppeald: false,
+        isClosed: false,
+        createAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+
 
     await notify(branch.vendor.ownerId, "NEW_ORDER", {
       orderId: order.id,
@@ -206,13 +220,15 @@ const placeOrder = async (req: any, res: any) => {
       );
     }
 
-    res.status(201).json(
-      withTransactionStatus(
-        { ...order } as Record<string, unknown>,
-        "PENDING",
-        { omitStatus: true },
-      ),
-    );
+    res
+      .status(201)
+      .json(
+        withTransactionStatus(
+          { ...order } as Record<string, unknown>,
+          "PENDING",
+          { omitStatus: true },
+        ),
+      );
   } catch (e: any) {
     res.status(401).json({ message: e.message });
   }
@@ -248,7 +264,6 @@ const getOrderById = async (req: any, res: any) => {
     });
     if (!order) return res.status(404).json({ message: "Order not found" });
 
-     
     if (order.userId !== userId)
       return res.status(403).json({ message: "Unauthorized" });
 
@@ -316,7 +331,10 @@ const appealOrder = async (req: any, res: any) => {
     const { orderId } = req.params;
     const { reason } = req.body;
 
-    const order = await prisma.order.findUnique({ where: { id: orderId }, include: {branch: true} });
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: { branch: true },
+    });
     if (!order) return res.status(404).json({ message: "Order not found" });
     if (order.userId !== userId && order.branch.managerId !== userId)
       return res.status(403).json({ message: "Unauthorized" });
@@ -347,6 +365,20 @@ const appealOrder = async (req: any, res: any) => {
       },
     });
 
+    const customerSupport = await prisma.user.findFirst({
+      where: { role: "admin" },
+    });
+
+    const chatRef = admin.firestore().collection("orderChats").doc(order.id);
+
+    await chatRef.set(
+      {
+        participants: FieldValue.arrayUnion(customerSupport?.firebaseUid),
+        isAppeald: true,
+      },
+      { merge: true },
+    );
+
     await admin.firestore().collection("adminNotifications").add({
       type: "ORDER_APPEALED",
       orderId,
@@ -370,19 +402,19 @@ const getManagerOrders = async (req: any, res: any) => {
     const branches = await prisma.branch.findMany({
       where: { managerId: userId },
     });
-    
+
     if (!branches) return res.status(404).json({ message: "Branch not found" });
 
     const orders = await prisma.order.findMany({
       where: {
         branch: {
-          managerUid: userId
+          managerUid: userId,
         },
         ...(status && { status: status as any }),
         include: { items: true },
         orderBy: { createdAt: "desc" },
-      }
-    })
+      },
+    });
 
     res.json(orders);
   } catch (e: any) {
@@ -404,8 +436,7 @@ const updateOrderStatus = async (req: any, res: any) => {
       where: { managerId: userId },
     });
 
-    if (!branch)
-      return res.status(403).json({ message: "Unauthorized" });
+    if (!branch) return res.status(403).json({ message: "Unauthorized" });
 
     const allowed: Record<string, string[]> = {
       pending: ["confirmed", "cancelled"],
@@ -468,7 +499,10 @@ const cancelAppeal = async (req: any, res: any) => {
 
     const { orderId } = req.params;
 
-    const order = await prisma.order.findUnique({ where: { id: orderId } , include: {branch: true}});
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: { branch: true },
+    });
     if (!order) return res.status(404).json({ message: "Order not found" });
     if (order.userId !== userId && order.branch.managerId !== userId)
       return res.status(403).json({ message: "Forbidden" });
@@ -507,8 +541,6 @@ const confirmPodReceived = async (req: any, res: any) => {
       return res.status(400).json({ message: "Not a POD order" });
     if (order.status !== "delivered")
       return res.status(400).json({ message: "Order not delivered yet" });
-
-     
 
     const config = await prisma.appConfig.findFirst();
     const commissionPercent = config?.commissionPercent ?? 5;

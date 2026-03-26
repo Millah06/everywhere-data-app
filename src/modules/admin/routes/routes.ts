@@ -4,6 +4,7 @@ import usersController from "../controllers/users.controller";
 import dashboardController from "../controllers/dashboard.controller";
 import analyticsController from "../controllers/analytics.controller";
 import transactionsController from "../controllers/transactions.controller";
+import marketPlaceController from "../controllers/marketPlace.controller";
 
 
 const router = Router();
@@ -102,6 +103,21 @@ router.get(
 
 router.post('/admin/migrate', usersController.migrateUsers);
 
+//marketPlace
+// ── ADMIN ─────────────────────────────────────────────────────────────────────
+// These routes are protected by auth middleware. Add role checks in each
+// controller function when you have admin roles set up in your system.
+router.get("/admin/vendor/pending", marketPlaceController.getPendingVendors);
+
+router.post("/admin/vendor/:vendorId/approve", marketPlaceController.approveVendor);
+router.post("/admin/vendor/:vendorId/reject", marketPlaceController.rejectVendor);
+
+router.get("/admin/order/appeals", marketPlaceController.getAppeals);
+router.post("/admin/order/:orderId/resolve", marketPlaceController.resolveAppeal);
+router.post("/admin/chat/:orderId/send", marketPlaceController.adminSendMessage);
+
+router.get("/admin/config", marketPlaceController.getConfig);
+router.patch("/admin/config", marketPlaceController.updateConfig);
 
 
 export default router;

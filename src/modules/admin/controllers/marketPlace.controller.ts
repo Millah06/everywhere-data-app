@@ -1,5 +1,6 @@
 import { prisma } from "../../../prisma";
 import admin from "firebase-admin";
+const phonePattern = /(\+?\d[\d\s\-]{8,}\d)/;
 
 const notify = async (
   userId: string,
@@ -26,7 +27,7 @@ const getPendingVendors = async (req: any, res: any) => {
     });
 
     res.json(vendors);
-  } catch (e: any) {
+  } catch (e: any) { 
     res.status(401).json({ message: e.message });
   }
 };
@@ -39,7 +40,7 @@ const approveVendor = async (req: any, res: any) => {
 
     const vendor = await prisma.vendor.update({
       where: { id: vendorId },
-      data: { status: "approved", isVisible: true },
+      data: { status: "approved", isVisible: true, },
     });
 
     await notify(vendor.ownerId, "VENDOR_APPROVED", {
@@ -231,6 +232,44 @@ const updateConfig = async (req: any, res: any) => {
   }
 };
 
+const adminSendMessage = async (req: any, res: any) => {
+  try {
+    if (!req.user) return res.status(401).json({ message: "Unauthorized" });
+
+    const { orderId } = req.params;
+    const { message } = req.body;
+
+    if (!message || message.trim() === "")
+      return res.status(400).json({ message: "Message cannot be empty" });
+    if (phonePattern.test(message))
+      return res
+        .status(400)
+        .json({ message: "Phone numbers are not allowed in chat" });
+
+    const order = await prisma.order.findUnique({ where: { id: orderId } });
+    if (!order) return res.status(404).json({ message: "Order not found" });
+
+    const msgRef = await admin
+      .firestore()
+      .collection("orderChats")
+      .doc(orderId)
+      .collection("messages")
+      .add({
+        senderId: "admin",
+        senderName: "Support",
+        message: message.trim(),
+        isAdmin: true,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+    res
+      .status(201)
+      .json({ id: msgRef.id, orderId, message: message.trim(), isAdmin: true });
+  } catch (e: any) {
+    res.status(401).json({ message: e.message });
+  }
+};
+
 export default {
   getPendingVendors,
   approveVendor,
@@ -239,4 +278,5 @@ export default {
   resolveAppeal,
   getConfig,
   updateConfig,
+  adminSendMessage
 };

@@ -1,6 +1,5 @@
 import {Router} from "express";
-import adminController from "../admin/controllers/marketPlace.controller";
-import chatController from "../../chat/chatController";
+import chatController from "./chat/chatController";
 import { authMiddleware } from "../../middleware/auth";
 import branchController from "./branch/branchController";
 import locationController from "./location/locationController";
@@ -84,16 +83,6 @@ router.get("/location/areas/:lgaId", locationController.getAreas);
 router.get("/location/streets/:areaId", locationController.getStreets);
 router.get("/location/hierarchy", locationController.getFullHierarchy);
 
-// ── ADMIN ─────────────────────────────────────────────────────────────────────
-// These routes are protected by auth middleware. Add role checks in each
-// controller function when you have admin roles set up in your system.
-router.get("/admin/vendor/pending", adminController.getPendingVendors);
-router.post("/admin/vendor/:vendorId/approve", adminController.approveVendor);
-router.post("/admin/vendor/:vendorId/reject", adminController.rejectVendor);
-router.get("/admin/order/appeals", adminController.getAppeals);
-router.post("/admin/order/:orderId/resolve", adminController.resolveAppeal);
-router.post("/admin/chat/:orderId/send", chatController.adminSendMessage);
-router.get("/admin/config", adminController.getConfig);
-router.put("/admin/config", adminController.updateConfig);
+
 
 export default router;
