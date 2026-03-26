@@ -133,7 +133,7 @@ const applyAsVendor = async (req: any, res: any) => {
         email: email || "",
         cac: cac || "",
         //will be change on production to pending and only set to approved after admin review
-        status: "approved",
+        status: "pending",
         isVisible: false,
         ...(branch && {
           branches: {

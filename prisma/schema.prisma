@@ -372,8 +372,8 @@ model Vendor {
   // existing...
   allowsPayOnDelivery  Boolean    @default(false)
 
-  status    VendorStatus @default(approved)
-  isVisible Boolean      @default(true)
+  status    VendorStatus @default(pending)
+  isVisible Boolean      @default(false)
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 
