@@ -35,7 +35,7 @@ const addBranch = async (req: any, res: any) => {
   try {
     const userId = req.user?.id;
 
-    const { state, lga, area, street, estimatedDeliveryTime, managerUid, isMainBranch } = req.body;
+    const { state, lga, area, street, estimatedDeliveryTime, isMainBranch } = req.body;
 
      
 
@@ -55,6 +55,7 @@ const addBranch = async (req: any, res: any) => {
         area,
         street,
         managerId: userId,
+        managerUid: req.user.uid,
         isMainBranch: isMainBranch ||  false,
         estimatedDeliveryTime: estimatedDeliveryTime || 30,
       },

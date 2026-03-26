@@ -1,6 +1,7 @@
 import { prisma } from "../../../prisma";
 import admin from "firebase-admin";
 const phonePattern = /(\+?\d[\d\s\-]{8,}\d)/;
+import { sendNotification } from "../../../shared/utils/notification";
 
 const notify = async (
   userId: string,
@@ -27,7 +28,7 @@ const getPendingVendors = async (req: any, res: any) => {
     });
 
     res.json(vendors);
-  } catch (e: any) { 
+  } catch (e: any) {
     res.status(401).json({ message: e.message });
   }
 };
@@ -40,7 +41,7 @@ const approveVendor = async (req: any, res: any) => {
 
     const vendor = await prisma.vendor.update({
       where: { id: vendorId },
-      data: { status: "approved", isVisible: true, },
+      data: { status: "approved", isVisible: true },
     });
 
     await notify(vendor.ownerId, "VENDOR_APPROVED", {
@@ -62,8 +63,28 @@ const rejectVendor = async (req: any, res: any) => {
 
     const vendor = await prisma.vendor.update({
       where: { id: vendorId },
-      data: { status: "rejected" },
+      data: {
+        status: "rejected",
+        rejectionMessage: reason || "Application did not meet our requirements",
+      },
+      include: {
+        user: {
+          select: {
+            notificationToken: true,
+          },
+        },
+      },
     });
+
+    const notificationToken = vendor.user.notificationToken;
+
+    if (notificationToken) {
+      await sendNotification(
+        notificationToken,
+        "Store Application Rejected",
+        reason || "Application did not meet our requirements",
+      );
+    }
 
     await notify(vendor.ownerId, "VENDOR_REJECTED", {
       vendorName: vendor.name,
@@ -278,5 +299,5 @@ export default {
   resolveAppeal,
   getConfig,
   updateConfig,
-  adminSendMessage
+  adminSendMessage,
 };

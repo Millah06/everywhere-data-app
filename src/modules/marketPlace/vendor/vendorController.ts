@@ -141,6 +141,7 @@ const applyAsVendor = async (req: any, res: any) => {
             create: {
               isMainBranch: true,
               managerId: userId,
+              managerUid: req.user.uid,
               state: branch.state,
               lga: branch.lga,
               area: branch.area,

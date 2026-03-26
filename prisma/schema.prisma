@@ -374,6 +374,7 @@ model Vendor {
   allowsPayOnDelivery  Boolean    @default(false)
 
   status    VendorStatus @default(pending)
+  rejectionMessage      String?
   isVisible Boolean      @default(false)
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
@@ -391,7 +392,9 @@ model Branch {
 
   isMainBranch Boolean @default(false)
 
-  managerId String? // Firebase UID of person managing this branch
+  managerId String?
+
+  managerUid String? // Firebase UID of person managing this branch
 
   state                 String
   lga                   String
