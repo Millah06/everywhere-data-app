@@ -94,7 +94,9 @@ const updateProfile = async (req: any, res: any) => {
 
     const { description, phone, email } = req.body;
 
-    const vendor = await prisma.vendor.findFirst({ where: { ownerId: userId } });
+    const vendor = await prisma.vendor.findFirst({
+      where: { ownerId: userId },
+    });
     if (!vendor) return res.status(404).json({ message: "Vendor not found" });
 
     const updated = await prisma.vendor.update({
@@ -118,15 +120,61 @@ const applyAsVendor = async (req: any, res: any) => {
     const existing = await prisma.vendor.findFirst({
       where: { ownerId: userId },
     });
-    if (existing)
+    if (existing) {
+      if (existing.status == "rejected") {
+        const vendor = await prisma.vendor.update({
+          where: {
+            id: existing.id,
+          },
+          data: {
+            ownerId: userId,
+            ownerFirebaseUid: req.user.uid,
+            name,
+            vendorType,
+            description,
+            phone: phone || "",
+            email: email || "",
+            cac: cac || "",
+            //will be change on production to pending and only set to approved after admin review
+            status: "pending",
+            isVisible: false,
+            ...(branch && {
+              branches: {
+                create: {
+                  isMainBranch: true,
+                  managerId: userId,
+                  managerUid: req.user.uid,
+                  state: branch.state,
+                  lga: branch.lga,
+                  area: branch.area,
+                  street: branch.street,
+                  estimatedDeliveryTime: branch.estimatedDeliveryTime || 30,
+                },
+              },
+            }),
+          },
+          include: { branches: true },
+        });
+
+        await admin.firestore().collection("adminNotifications").add({
+          type: "NEW_VENDOR_RESUBMISSION_APPLICATION",
+          vendorId: vendor.id,
+          vendorName: vendor.name,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        res.status(201).json(vendor);
+      }
+
       return res
         .status(400)
         .json({ message: "You have already applied as a vendor" });
+    }
 
     const vendor = await prisma.vendor.create({
       data: {
         ownerId: userId,
-        ownerFirebaseUid : req.user.uid,
+        ownerFirebaseUid: req.user.uid,
         name,
         vendorType,
         description,
@@ -154,7 +202,6 @@ const applyAsVendor = async (req: any, res: any) => {
       include: { branches: true },
     });
 
-     
     await admin.firestore().collection("adminNotifications").add({
       type: "NEW_VENDOR_APPLICATION",
       vendorId: vendor.id,
@@ -307,7 +354,7 @@ const addReview = async (req: any, res: any) => {
 const getAdvancedMetrics = async (req: any, res: any) => {
   try {
     const userId = req.user?.id;
-   
+
     const vendor = await requireMainBranch(userId, req.query.vendorId);
 
     const orders = await prisma.order.findMany({
@@ -315,40 +362,52 @@ const getAdvancedMetrics = async (req: any, res: any) => {
       include: { items: true, escrow: true },
     });
 
-    const completed  = orders.filter((o: any) => o.status === "completed");
-    const cancelled  = orders.filter((o: any) => o.status === "cancelled");
-    const appealed   = orders.filter((o: any) => o.status === "appealed");
-    const ongoing    = orders.filter((o: any) => !["completed","cancelled"].includes(o.status));
+    const completed = orders.filter((o: any) => o.status === "completed");
+    const cancelled = orders.filter((o: any) => o.status === "cancelled");
+    const appealed = orders.filter((o: any) => o.status === "appealed");
+    const ongoing = orders.filter(
+      (o: any) => !["completed", "cancelled"].includes(o.status),
+    );
 
-    const totalRevenue     = completed.reduce((s: number, o: any) => s + o.subtotal, 0);
-    const totalCommission  = completed
+    const totalRevenue = completed.reduce(
+      (s: number, o: any) => s + o.subtotal,
+      0,
+    );
+    const totalCommission = completed
       .filter((o: any) => o.escrow)
       .reduce((s: number, o: any) => s + (o.escrow?.commission ?? 0), 0);
-    const netEarnings      = totalRevenue - totalCommission;
+    const netEarnings = totalRevenue - totalCommission;
 
     // Per-branch breakdown
-    const branches = await prisma.branch.findMany({ where: { vendorId: vendor.id } });
-    const branchBreakdown = await Promise.all(branches.map(async (b: any) => {
-      const bOrders = completed.filter((o: any) => o.branchId === b.id);
-      return {
-        branchId: b.id,
-        area: b.area,
-        lga: b.lga,
-        isMainBranch: b.isMainBranch,
-        completedOrders: bOrders.length,
-        revenue: bOrders.reduce((s: number, o: any) => s + o.subtotal, 0),
-      };
-    }));
+    const branches = await prisma.branch.findMany({
+      where: { vendorId: vendor.id },
+    });
+    const branchBreakdown = await Promise.all(
+      branches.map(async (b: any) => {
+        const bOrders = completed.filter((o: any) => o.branchId === b.id);
+        return {
+          branchId: b.id,
+          area: b.area,
+          lga: b.lga,
+          isMainBranch: b.isMainBranch,
+          completedOrders: bOrders.length,
+          revenue: bOrders.reduce((s: number, o: any) => s + o.subtotal, 0),
+        };
+      }),
+    );
 
     // Top items across all branches
     const allItems = completed.flatMap((o: any) => o.items);
-    const itemCounts: Record<string, { name: string; qty: number; revenue: number }> = {};
+    const itemCounts: Record<
+      string,
+      { name: string; qty: number; revenue: number }
+    > = {};
     for (const item of allItems) {
       if (!itemCounts[item.menuItemId]) {
         itemCounts[item.menuItemId] = { name: item.name, qty: 0, revenue: 0 };
       }
-      itemCounts[item.menuItemId].qty      += item.quantity;
-      itemCounts[item.menuItemId].revenue  += item.price * item.quantity;
+      itemCounts[item.menuItemId].qty += item.quantity;
+      itemCounts[item.menuItemId].revenue += item.price * item.quantity;
     }
     const topItems = Object.values(itemCounts)
       .sort((a: any, b: any) => b.qty - a.qty)
@@ -379,10 +438,14 @@ const requestVerification = async (req: any, res: any) => {
   try {
     const userId = req.user?.id;
 
-    const vendor = await prisma.vendor.findFirst({ where: { ownerId: userId } });
+    const vendor = await prisma.vendor.findFirst({
+      where: { ownerId: userId },
+    });
     if (!vendor) return res.status(404).json({ message: "Vendor not found" });
-    if (vendor.verified) return res.status(400).json({ message: "Already verified" });
-    if (vendor.status !== "approved") return res.status(400).json({ message: "Vendor must be approved first" });
+    if (vendor.verified)
+      return res.status(400).json({ message: "Already verified" });
+    if (vendor.status !== "approved")
+      return res.status(400).json({ message: "Vendor must be approved first" });
 
     // Debit verification fee from user wallet
     // Replace with your actual wallet debit logic:
@@ -397,7 +460,10 @@ const requestVerification = async (req: any, res: any) => {
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    res.json({ message: "Verification request submitted. Our team will review within 1–3 business days." });
+    res.json({
+      message:
+        "Verification request submitted. Our team will review within 1–3 business days.",
+    });
   } catch (e: any) {
     res.status(401).json({ message: e.message });
   }
