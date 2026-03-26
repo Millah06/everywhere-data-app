@@ -107,17 +107,25 @@ router.post('/admin/migrate', usersController.migrateUsers);
 // ── ADMIN ─────────────────────────────────────────────────────────────────────
 // These routes are protected by auth middleware. Add role checks in each
 // controller function when you have admin roles set up in your system.
-router.get("/admin/vendor/pending", marketPlaceController.getPendingVendors);
+router.get("/admin/vendor/pending", authMiddleware,
+  requireAdmin, marketPlaceController.getPendingVendors);
 
-router.post("/admin/vendor/:vendorId/approve", marketPlaceController.approveVendor);
-router.post("/admin/vendor/:vendorId/reject", marketPlaceController.rejectVendor);
+router.post("/admin/vendor/:vendorId/approve", authMiddleware,
+  requireAdmin, marketPlaceController.approveVendor);
+router.post("/admin/vendor/:vendorId/reject", authMiddleware,
+  requireAdmin, marketPlaceController.rejectVendor);
 
-router.get("/admin/order/appeals", marketPlaceController.getAppeals);
-router.post("/admin/order/:orderId/resolve", marketPlaceController.resolveAppeal);
-router.post("/admin/chat/:orderId/send", marketPlaceController.adminSendMessage);
+router.get("/admin/order/appeals", authMiddleware,
+  requireAdmin, marketPlaceController.getAppeals);
+router.post("/admin/order/:orderId/resolve", authMiddleware,
+  requireAdmin, marketPlaceController.resolveAppeal);
+router.post("/admin/chat/:orderId/send", authMiddleware,
+  requireAdmin, marketPlaceController.adminSendMessage);
 
-router.get("/admin/config", marketPlaceController.getConfig);
-router.patch("/admin/config", marketPlaceController.updateConfig);
+router.get("/admin/config", authMiddleware,
+  requireAdmin, marketPlaceController.getConfig);
+router.patch("/admin/config", authMiddleware,
+  requireAdmin, marketPlaceController.updateConfig);
 
 
 export default router;

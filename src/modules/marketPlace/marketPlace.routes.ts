@@ -29,8 +29,8 @@ router.put("/vendor/profile", authMiddleware, vendorController.updateProfile);
 router.post("/vendor/:id/review", authMiddleware, vendorController.addReview);
 router.post("/vendor/upload/logo", upload.single("image"), uploadController.uploadVendorLogo);
 router.post("/vendor/upload/coverPhoto", upload.single("image"), uploadController.uploadVendorCoverImage);
-router.post("/vendor/upload/cac", upload.single("image"), uploadController.uploadCacCertificate);
-router.post("/vendor/verify/request", vendorController.requestVerification);
+router.post("/vendor/upload/cac", authMiddleware, upload.single("image"), uploadController.uploadCacCertificate);
+router.post("/vendor/verify/request", authMiddleware, vendorController.requestVerification);
 
 // ── BRANCH ────────────────────────────────────────────────────────────────────
 router.get("/branch/:branchId/menu", authMiddleware, branchController.getBranchMenu);
@@ -42,46 +42,46 @@ router.post("/branch/:branchId/zone/add", authMiddleware, branchController.addDe
 router.delete("/branch/zone/:zoneId/delete", authMiddleware, branchController.deleteDeliveryZone);
 
 // ── MENU ──────────────────────────────────────────────────────────────────────
-router.post("/menu/:branchId/add", menuController.addMenuItem);
+router.post("/menu/:branchId/add", authMiddleware, menuController.addMenuItem);
 router.get("/menu/manager/branches", authMiddleware, menuController.getManagerBranchesMenu);
-router.put("/menu/:itemId/update", menuController.updateMenuItem);
-router.delete("/menu/:itemId/delete", menuController.deleteMenuItem);
-router.put("/menu/:itemId/toggle", menuController.toggleMenuItemAvailability);
-router.post("/menu/:itemId/upload-image", upload.single("image"), uploadController.uploadMenuItemImage);
+router.put("/menu/:itemId/update", authMiddleware, menuController.updateMenuItem);
+router.delete("/menu/:itemId/delete", authMiddleware, menuController.deleteMenuItem);
+router.put("/menu/:itemId/toggle", authMiddleware, menuController.toggleMenuItemAvailability);
+router.post("/menu/:itemId/upload-image", authMiddleware, upload.single("image"), uploadController.uploadMenuItemImage);
 
 // ── ORDER ─────────────────────────────────────────────────────────────────────
 // NOTE: /order/mine and /order/vendor/list MUST come before /order/:orderId
-router.post("/order/place", orderController.placeOrder);
-router.get("/order/mine", orderController.getMyOrders);
+router.post("/order/place", authMiddleware, orderController.placeOrder);
+router.get("/order/mine", authMiddleware, orderController.getMyOrders);
 
-router.get("/order/vendor/list", orderController.getManagerOrders);
+router.get("/order/vendor/list", authMiddleware, orderController.getManagerOrders);
 
-router.get("/order/:orderId", orderController.getOrderById);
-router.post("/order/:orderId/confirm", orderController.confirmDelivery);
-router.post("/order/:orderId/appeal", orderController.appealOrder);
-router.post("/order/:orderId/cancel-appeal", orderController.cancelAppeal);
-router.put("/order/:orderId/status", orderController.updateOrderStatus);
-router.post("/order/:orderId/pod-confirm", orderController.confirmPodReceived);
+router.get("/order/:orderId", authMiddleware, orderController.getOrderById);
+router.post("/order/:orderId/confirm", authMiddleware, orderController.confirmDelivery);
+router.post("/order/:orderId/appeal", authMiddleware, orderController.appealOrder);
+router.post("/order/:orderId/cancel-appeal", authMiddleware, orderController.cancelAppeal);
+router.put("/order/:orderId/status", authMiddleware, orderController.updateOrderStatus);
+router.post("/order/:orderId/pod-confirm", authMiddleware, orderController.confirmPodReceived);
 
 
-router.get("/vendor/metrics/advanced", vendorController.getAdvancedMetrics);
-router.put("/branch/:branchId/set-main", branchController.setMainBranch);
-router.put("/branch/:branchId/assign-manager", branchController.assignManager);
+router.get("/vendor/metrics/advanced", authMiddleware, vendorController.getAdvancedMetrics);
+router.put("/branch/:branchId/set-main", authMiddleware, branchController.setMainBranch);
+router.put("/branch/:branchId/assign-manager", authMiddleware, branchController.assignManager);
 
 // ── CHAT ──────────────────────────────────────────────────────────────────────
 // Flutter listens to Firestore directly for realtime messages.
 // Firestore path: orderChats/{orderId}/messages (ordered by createdAt asc)
 // These HTTP endpoints handle sending and initial load only.
-router.post("/chat/:orderId/send", chatController.sendMessage);
-router.get("/chat/:orderId/messages", chatController.getMessages);
+router.post("/chat/:orderId/send", authMiddleware, chatController.sendMessage);
+router.get("/chat/:orderId/messages", authMiddleware, chatController.getMessages);
 
 // ── LOCATION ──────────────────────────────────────────────────────────────────
 // Used by Flutter dropdowns: state → lga → area → street (each call uses the id from previous)
-router.get("/location/states", locationController.getStates);
-router.get("/location/lgas/:stateId", locationController.getLgas);
-router.get("/location/areas/:lgaId", locationController.getAreas);
-router.get("/location/streets/:areaId", locationController.getStreets);
-router.get("/location/hierarchy", locationController.getFullHierarchy);
+router.get("/location/states", authMiddleware, locationController.getStates);
+router.get("/location/lgas/:stateId", authMiddleware, locationController.getLgas);
+router.get("/location/areas/:lgaId", authMiddleware, locationController.getAreas);
+router.get("/location/streets/:areaId", authMiddleware, locationController.getStreets);
+router.get("/location/hierarchy", authMiddleware, locationController.getFullHierarchy);
 
 
 
