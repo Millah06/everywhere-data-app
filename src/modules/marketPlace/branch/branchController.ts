@@ -35,28 +35,29 @@ const addBranch = async (req: any, res: any) => {
   try {
     const userId = req.user?.id;
 
-    const { state, lga, area, street, estimatedDeliveryTime, isMainBranch } = req.body;
+    const { state, lga, area, street, estimatedDeliveryTime, vendorId } = req.body;
 
+    const vendor = await prisma.vendor.findUnique({ where: { id: vendorId } });
+    if (!vendor) return res.status(404).json({ message: "Vendor not found" });
      
+    // const branchManager = await prisma.branch.findFirst({
+    //   where: { isMainBranch: true, managerId: userId,  },
+    // });
 
-    const branchManager = await prisma.branch.findFirst({
-      where: { isMainBranch: true, managerId: userId,  },
-    });
-
-    if (!branchManager) return res.status(404).json({ message: "Only branch managers can add branch" });
+    // if (!branchManager) return res.status(404).json({ message: "Only branch managers can add branch" });
   
 
     const branch = await prisma.branch.create({
 
       data: {
-        vendorId: branchManager.vendorId,
+        vendorId: vendorId,
         state,
         lga,
         area,
         street,
         managerId: userId,
         managerUid: req.user.uid,
-        isMainBranch: isMainBranch ||  false,
+        isMainBranch: false,
         estimatedDeliveryTime: estimatedDeliveryTime || 30,
       },
 

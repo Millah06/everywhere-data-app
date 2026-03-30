@@ -1,4 +1,5 @@
 import { prisma } from "../../../prisma";
+import { uploadImage } from "../../../shared/services/uploadImage.service";
 
 /**
  * PATCH /users/me/profile
@@ -83,8 +84,70 @@ export const getReferralStats = async (req: any, res: any) => {
   }
 };
 
+const uploadProfilePicture = async (req: any, res: any) => {
+  try {
+    const userId = req.user?.id;
+
+    if (!req.file)
+      return res.status(400).json({ message: "No image file provided" });
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { userProfile: true },
+    });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const imageUrl = await uploadImage(req.file, userId, "userProfilePicture");
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        userProfile: {
+          update: { avatarUrl: imageUrl },
+        },
+      },
+    });
+
+    res.json({ success: true, imageUrl });
+  } catch (e: any) {
+    res.status(401).json({ message: e.message });
+  }
+};
+
+const uploadCoverPhoto = async (req: any, res: any) => {
+  try {
+    const userId = req.user?.id;
+
+    if (!req.file)
+      return res.status(400).json({ message: "No image file provided" });
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { userProfile: true },
+    });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const imageUrl = await uploadImage(req.file, userId, "userCoverPhoto");
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        userProfile: {
+          update: { coverPhotoUrl: imageUrl },
+        },
+      },
+    });
+
+    res.json({ success: true, imageUrl });
+  } catch (e: any) {
+    res.status(401).json({ message: e.message });
+  }
+};
+
 export default {
     updateNotificationToken,
     updateProfile,
     getReferralStats,
+    uploadProfilePicture,
+    uploadCoverPhoto
 }
