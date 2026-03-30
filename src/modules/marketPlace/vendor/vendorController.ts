@@ -140,7 +140,7 @@ const applyAsVendor = async (req: any, res: any) => {
             isVisible: false,
             ...(branch && {
               branches: {
-                create: {
+                update: {
                   isMainBranch: true,
                   managerId: userId,
                   managerUid: req.user.uid,
@@ -198,8 +198,13 @@ const applyAsVendor = async (req: any, res: any) => {
             },
           },
         }),
+        user: {
+          update: {
+            role: "vendor"
+          }
+        }
       },
-      include: { branches: true },
+      include: { branches: true, user: true },
     });
 
     await admin.firestore().collection("adminNotifications").add({
@@ -210,6 +215,37 @@ const applyAsVendor = async (req: any, res: any) => {
     });
 
     res.status(201).json(vendor);
+  } catch (e: any) {
+    res.status(401).json({ message: e.message });
+  }
+};
+
+const deleteVendorAccount = async (req: any, res: any) => {
+  try {
+    const userId = req.user?.id;
+
+    const { name, vendorType, description, phone, email, cac, branch } =
+      req.body;
+
+    const existing = await prisma.vendor.findFirst({
+      where: { ownerId: userId },
+    });
+    if (!existing) {
+      return res
+        .status(400)
+        .json({ message: "You No Active Vendor Account" });
+    }
+
+    if (existing.)
+
+    await admin.firestore().collection("adminNotifications").add({
+      type: "NEW_VENDOR_APPLICATION",
+      vendorId: existing.id,
+      vendorName: existing.name,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    res.status(201).json(existing);
   } catch (e: any) {
     res.status(401).json({ message: e.message });
   }

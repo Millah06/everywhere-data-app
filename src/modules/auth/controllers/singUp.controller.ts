@@ -62,11 +62,12 @@ export const register = async (req: any, res: any) => {
         userProfile: {
           create: {},
         },
-      },
+      }, 
       select: {
         id: true,
         name: true,
         email: true,
+        firebaseUid: true,
         role: true,
         referralCode: true,
         createdAt: true,
@@ -76,7 +77,7 @@ export const register = async (req: any, res: any) => {
     // 4. Set custom claims on Firebase so role is available in token
     await getAuth().setCustomUserClaims(firebaseUser.uid, { role: user.role, postgresId: user.id });
 
-    // 5. Return a custom token the client can exchange for an ID token
+    // 5. Return a custom tok en the client can exchange for an ID token
     const customToken = await getAuth().createCustomToken(firebaseUser.uid, {
       role: user.role,
     });

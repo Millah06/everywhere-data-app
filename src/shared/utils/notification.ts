@@ -9,6 +9,7 @@ export const sendNotification = async (
     token: fcmToken,
     notification: { title, body },
     data: { click_action: "FLUTTER_NOTIFICATION_CLICK" },
+    
   };
 
   try {
