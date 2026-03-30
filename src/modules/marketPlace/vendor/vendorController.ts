@@ -227,6 +227,8 @@ const deleteVendorAccount = async (req: any, res: any) => {
     const { name, vendorType, description, phone, email, cac, branch } =
       req.body;
 
+    
+
     const existing = await prisma.vendor.findFirst({
       where: { ownerId: userId },
     });
@@ -236,13 +238,39 @@ const deleteVendorAccount = async (req: any, res: any) => {
         .json({ message: "You No Active Vendor Account" });
     }
 
-    if (existing.)
+    if (userId !== existing.ownerId) {
+      return res
+        .status(403)
+        .json({ message: "You are not authorized to delete this vendor account" });
+    }
 
-    await admin.firestore().collection("adminNotifications").add({
-      type: "NEW_VENDOR_APPLICATION",
-      vendorId: existing.id,
-      vendorName: existing.name,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    const branches = await prisma.branch.findMany({
+      where: {
+        vendorId: existing.id,
+      }
+    });
+
+    for (const b of branches) {
+       const orders = await prisma.order.findMany({
+        where: {
+          branchId: b.id,
+          status: "pending"
+        }
+      });
+      if (orders) {
+        return res.status(400).json({ message: "You have ongoing orders, please wait until they are completed before deleting your vendor account" });
+      }
+    }
+
+    await prisma.vendor.delete({
+      where: {
+        id: existing.id,
+      },
+    });
+
+     await prisma.user.update({
+      where: { id: userId },
+      data: { role: "user" }
     });
 
     res.status(201).json(existing);
