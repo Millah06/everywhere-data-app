@@ -41,12 +41,12 @@ export const createVirtualAccount = async (req: any, res: any) => {
 
     if (!user) return res.status(404).json({ message: "User not found." });
 
-    // KYC gate — recommended before assigning a DVA
-    if (user.kyc?.status !== "verified") {
-      return res.status(403).json({
-        message: "KYC verification required before creating a virtual account.",
-      });
-    }
+    // // KYC gate — recommended before assigning a DVA
+    // if (user.kyc?.status !== "verified") {
+    //   return res.status(403).json({
+    //     message: "KYC verification required before creating a virtual account.",
+    //   });
+    // }
 
     // 1. Create a Paystack customer (idempotent — won't fail if already exists)
     const customerRes = await paystackClient.post("/customer", {
@@ -77,6 +77,7 @@ export const createVirtualAccount = async (req: any, res: any) => {
     });
 
     return res.status(201).json(account);
+
   } catch (e: any) {
     // Surface Paystack-specific errors clearly
     const paystackMessage = e.response?.data?.message;

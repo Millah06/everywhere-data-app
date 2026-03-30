@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import axios from "axios";
 import admin from "firebase-admin";
+import {prisma} from "../../../prisma";
 
 const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET!;
 const PAYSTACK_BASE_URL = "https://api.paystack.co";
@@ -12,7 +13,18 @@ const createVA = async (req: Request, res: Response): Promise<void> => {
       res.status(401).json({ error: "Unauthorized" });
       return;
     }
-    const { email, name, phone } = req.body;
+    // const { email, name, phone } = req.body;
+
+    const user = await prisma.user.findUnique({ where: { firebaseUid: uid } });
+
+    if (!user) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+
+    const name = user.name;
+    const email = user.email;
+    const phone = user.phone || "";
 
     // ✅ Create Paystack Customer
     const customerRes = await axios.post(`${PAYSTACK_BASE_URL}/customer`, {

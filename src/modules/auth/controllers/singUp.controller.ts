@@ -2,6 +2,8 @@
 import { getAuth } from "firebase-admin/auth";
 import { prisma } from "../../../prisma";
 import { generateReferralCode } from "../../../shared/utils/generateRefferalCode";
+ 
+import { generate11DigitId } from "../../../transferUid";
 
 /**
  * POST /auth/register
@@ -40,7 +42,7 @@ export const register = async (req: any, res: any) => {
     const user = await prisma.user.create({
       data: {
         firebaseUid: firebaseUser.uid,
-        transferUid: firebaseUser.uid,
+        transferUid: generate11DigitId(),
         name,
         email,
         phone: phone ?? "",

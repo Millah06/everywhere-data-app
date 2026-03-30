@@ -22,6 +22,7 @@ router.get(
   authMiddleware,
   virtualAccountController.getMyVirtualAccounts,
 );
+
 router.post(
   "/virtual-accounts",
   authMiddleware,
