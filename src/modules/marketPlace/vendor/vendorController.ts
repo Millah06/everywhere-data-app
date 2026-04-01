@@ -75,8 +75,13 @@ const getMyVendor = async (req: any, res: any) => {
   try {
     const userId = req.user?.id;
 
+    // const vendor = await prisma.vendor.findFirst({
+    //   where: { ownerId: userId },
+    //   include: { branches: { include: { deliveryZones: true } } },
+    // });
+
     const vendor = await prisma.vendor.findFirst({
-      where: { ownerId: userId },
+      where: { branches: { some: { managerId: userId } } },
       include: { branches: { include: { deliveryZones: true } } },
     });
 
