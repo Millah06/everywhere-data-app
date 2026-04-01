@@ -196,16 +196,19 @@ const placeOrder = async (req: any, res: any) => {
 
     const chatRef = admin.firestore().collection("orderChats").doc(order.id);
 
-    await chatRef.set(
-      {
-        participants: FieldValue.arrayUnion([ userId, vendorId]),
-        isAppeald: false,
-        isClosed: false,
-        createAt: FieldValue.serverTimestamp(),
-      },
-      { merge: true },
-    );
-
+    try {
+      await chatRef.set(
+        {
+          participants: FieldValue.arrayUnion(userId, vendorId),
+          isAppeald: false,
+          isClosed: false,
+          createAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+    } catch (err) {
+      console.error("Chat creation failed:", err);
+    }
 
     await notify(branch.vendor.ownerId, "NEW_ORDER", {
       orderId: order.id,
