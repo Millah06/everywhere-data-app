@@ -200,9 +200,9 @@ const placeOrder = async (req: any, res: any) => {
       await chatRef.set(
         {
           participants: FieldValue.arrayUnion(userId, vendorId),
-          isAppeald: false,
+          isAppealed: false,
           isClosed: false,
-          createAt: FieldValue.serverTimestamp(),
+          createdAt: FieldValue.serverTimestamp(),
         },
         { merge: true },
       );
@@ -411,7 +411,7 @@ const getManagerOrders = async (req: any, res: any) => {
     const orders = await prisma.order.findMany({
       where: {
         branch: {
-          managerUid: userId,
+          managerId: userId,
         },
         ...(status && { status: status as any }),
         include: { items: true },
