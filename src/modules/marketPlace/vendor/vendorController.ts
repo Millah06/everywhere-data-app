@@ -224,11 +224,6 @@ const deleteVendorAccount = async (req: any, res: any) => {
   try {
     const userId = req.user?.id;
 
-    const { name, vendorType, description, phone, email, cac, branch } =
-      req.body;
-
-    
-
     const existing = await prisma.vendor.findFirst({
       where: { ownerId: userId },
     });
@@ -545,4 +540,5 @@ export default {
   getAdvancedMetrics,
   togglePodAcceptance,
   requestVerification,
+  deleteVendorAccount,
 };

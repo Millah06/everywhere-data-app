@@ -447,6 +447,7 @@ model MenuItem {
 model Order {
   id             String       @id @default(uuid())
   userId         String // Firebase UID of buyer
+  userName       String @default("User") // snapshot at order time
   vendorId       String
   branchId       String
   subtotal       Float

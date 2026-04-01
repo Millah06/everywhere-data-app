@@ -39,18 +39,19 @@ const placeOrder = async (req: any, res: any) => {
   try {
     const userId = req.user?.id;
 
-    const tok = await prisma.user.findUnique({
+    const user = await prisma.user.findUnique({
       where: {
         id: userId,
       },
       select: {
         notificationToken: true,
+        name: true,
       },
     });
 
     const clientRequestId = "";
 
-    const notificationToken = tok?.notificationToken;
+    const notificationToken = user?.notificationToken;
 
     const { vendorId, branchId, items, deliveryAddress, paymentMethod } =
       req.body;
@@ -157,6 +158,7 @@ const placeOrder = async (req: any, res: any) => {
     const order = await prisma.order.create({
       data: {
         userId,
+        userName: user?.name?.split(" ")[0] || "User",
         vendorId,
         branchId,
         subtotal,
