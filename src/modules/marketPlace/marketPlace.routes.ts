@@ -34,6 +34,7 @@ router.post("/vendor/verify/request", authMiddleware, vendorController.requestVe
 
 // ── BRANCH ────────────────────────────────────────────────────────────────────
 router.get("/branch/:branchId/menu", authMiddleware, branchController.getBranchMenu);
+router.get("/branch/manager/menu", authMiddleware, branchController.getManagersMenu);
 router.get("/branch/:branchId/delivery-zones", authMiddleware, branchController.getDeliveryZones);
 router.post("/branch/add", authMiddleware, branchController.addBranch);
 router.put("/branch/:branchId/update", authMiddleware, branchController.updateBranch);
