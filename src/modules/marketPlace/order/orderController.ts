@@ -414,9 +414,9 @@ const getManagerOrders = async (req: any, res: any) => {
           managerId: userId,
         },
         ...(status && { status: status as any }),
-        include: { items: true },
-        orderBy: { createdAt: "desc" },
       },
+      include: { items: true },
+      orderBy: { createdAt: "desc" },
     });
 
     res.json(orders);
