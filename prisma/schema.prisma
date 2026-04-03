@@ -112,7 +112,11 @@ model User {
 model UserProfile {
   id                     String   @id @default(uuid())
   userId                 String   @unique
+  userName               String?
   bio                    String   @default("")
+  location               String?
+  website                String?
+  businessEmail          String?
   avatarUrl              String   @default("")
   coverPhotoUrl          String   @default("")
   badges                 String[]
@@ -182,6 +186,7 @@ model Transaction {
   humanRef        String?
   clientRequestId String?           @unique
   metaData        Json?
+  orderId         String?           @unique
   status          TransactionStatus @default(pending)
   message         String?
   transferId      String?

@@ -180,6 +180,13 @@ const placeOrder = async (req: any, res: any) => {
       include: { items: true },
     });
 
+    await prisma.transaction.update({
+      where: {id: lock.transaction.id},
+      data: {
+        orderId: order.id
+      }
+    })
+
     const commission = subtotal * (config.commissionPercent / 100);
 
     if (paymentMethod !== "pay_on_delivery") {

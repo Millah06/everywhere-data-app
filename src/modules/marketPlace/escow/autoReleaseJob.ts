@@ -83,13 +83,45 @@ export const runAutoCancelJob = async () => {
   });
 
   for (const order of stale) {
-    await prisma.order.update({ where: { id: order.id }, data: { status: "cancelled" } });
+
+   
+
+    const updated = await prisma.order.updateMany({ where: { id: order.id }, 
+      data: { status: "cancelled", escrowStatus: "released" } });
+
+    if (updated.count === 0) continue;
+
     if (order.escrow) {
       await prisma.escrow.update({
         where: { orderId: order.id },
         data: { releaseStatus: "refunded" },
       });
     }
+
+     const wallet = await prisma.wallet.findUnique({
+      where: {userId: order.userId},
+      include: {fiat: true}
+    })
+    
+    await prisma.fiat.update({
+      where: { walletId: wallet?.id},
+      data: {
+        availableBalance: {
+          increment: order.totalAmount
+        },
+        lockedBalance: {
+          decrement: order.totalAmount
+        }
+      }, 
+    })
+
+    await prisma.transaction.update({
+      where: {orderId: order.id},
+      data: {
+        status: 'failed'
+      }
+    })
+
     // Notify buyer
     await admin.firestore().collection("notifications").add({
       recipientId: order.userId,
