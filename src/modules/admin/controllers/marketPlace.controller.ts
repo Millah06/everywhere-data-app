@@ -23,7 +23,7 @@ const getVendors = async (req: any, res: any) => {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    const { status, verificationStatus, search } = req.query;
+    const { status, verificationStatus, vendorType, search } = req.query;
 
     // Build dynamic filter
     const where: any = {};
@@ -36,12 +36,15 @@ const getVendors = async (req: any, res: any) => {
       where.verificationStatus = verificationStatus;
     }
 
+    if (vendorType) {
+      where.vendorType = vendorType;
+    }
+
     if (search) {
       where.OR = [
         { name: { contains: search, mode: "insensitive" } },
         { email: { contains: search, mode: "insensitive" } },
         { phone: { contains: search, mode: "insensitive" } },
-        { "user.name": { contains: search, mode: "insensitive" } }
       ];
     }
 
