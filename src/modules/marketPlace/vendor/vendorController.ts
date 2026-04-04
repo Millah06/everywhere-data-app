@@ -181,7 +181,6 @@ const applyAsVendor = async (req: any, res: any) => {
         phone: phone || "",
         email: email || "",
         cac: cac || "",
-        //will be change on production to pending and only set to approved after admin review
         status: "pending",
         isVisible: false,
         ...(branch && {
@@ -505,6 +504,10 @@ const requestVerification = async (req: any, res: any) => {
       return res.status(400).json({ message: "Already verified" });
     if (vendor.status !== "approved")
       return res.status(400).json({ message: "Vendor must be approved first" });
+    if (vendor.verificationStatus === "pending")
+      return res
+        .status(400)
+        .json({ message: "Verification request already pending" });
 
     // Debit verification fee from user wallet
     // Replace with your actual wallet debit logic:
@@ -522,6 +525,8 @@ const requestVerification = async (req: any, res: any) => {
     res.json({
       message:
         "Verification request submitted. Our team will review within 1–3 business days.",
+      verificationStatus: vendor.verificationStatus,
+
     });
   } catch (e: any) {
     res.status(401).json({ message: e.message });

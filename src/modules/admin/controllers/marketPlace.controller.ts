@@ -17,19 +17,45 @@ const notify = async (
   });
 };
 
-const getPendingVendors = async (req: any, res: any) => {
+const getVendors = async (req: any, res: any) => {
   try {
-    if (!req.user) return res.status(401).json({ message: "Unauthorized" });
+    if (!req.user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const { status, verificationStatus, search } = req.query;
+
+    // Build dynamic filter
+    const where: any = {};
+
+    if (status) {
+      where.status = status;
+    }
+
+    if (verificationStatus) {
+      where.verificationStatus = verificationStatus;
+    }
+
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: "insensitive" } },
+        { email: { contains: search, mode: "insensitive" } },
+        { phone: { contains: search, mode: "insensitive" } },
+        { "user.name": { contains: search, mode: "insensitive" } }
+      ];
+    }
+
+
 
     const vendors = await prisma.vendor.findMany({
-      where: { status: "pending" },
+      where,
       include: { branches: true },
       orderBy: { createdAt: "asc" },
     });
 
     res.json(vendors);
   } catch (e: any) {
-    res.status(401).json({ message: e.message });
+    res.status(500).json({ message: e.message });
   }
 };
 
@@ -292,7 +318,7 @@ const adminSendMessage = async (req: any, res: any) => {
 };
 
 export default {
-  getPendingVendors,
+  getVendors,
   approveVendor,
   rejectVendor,
   getAppeals,

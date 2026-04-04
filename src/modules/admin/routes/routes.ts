@@ -107,8 +107,8 @@ router.post('/admin/migrate', usersController.migrateUsers);
 // ── ADMIN ─────────────────────────────────────────────────────────────────────
 // These routes are protected by auth middleware. Add role checks in each
 // controller function when you have admin roles set up in your system.
-router.get("/admin/vendor/pending", authMiddleware,
-  requireAdmin, marketPlaceController.getPendingVendors);
+router.get("/admin/vendors", authMiddleware,
+  requireAdmin, marketPlaceController.getVendors);
 
 router.post("/admin/vendor/:vendorId/approve", authMiddleware,
   requireAdmin, marketPlaceController.approveVendor);

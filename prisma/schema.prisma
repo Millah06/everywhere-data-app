@@ -45,6 +45,13 @@ enum VendorStatus {
   rejected
 }
 
+enum VerificationStatus {
+  unverified
+  pending
+  verified
+  rejected
+}
+
 enum OrderStatus {
   pending
   confirmed
@@ -375,6 +382,7 @@ model Vendor {
   totalCompletedOrders Int        @default(0)
   completionRate       Float      @default(100)
   verified             Boolean    @default(false)
+  verificationStatus   VerificationStatus @default(unverified)
   // existing...
   allowsPayOnDelivery  Boolean    @default(false)
 
