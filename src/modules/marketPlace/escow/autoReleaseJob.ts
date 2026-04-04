@@ -1,18 +1,10 @@
 import { prisma } from "../../../prisma";
 import admin from "firebase-admin";
+import { sendNotification } from "../../../shared/utils/notification";
+import { WalletService } from "../../../shared/services/wallet.service";
 
-const notify = async (
-  userId: string,
-  type: string,
-  data: Record<string, any>,
-) => {
-  await admin.firestore().collection("notifications").add({
-    recipientId: userId,
-    type,
-    data,
-    read: false,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-  });
+const notify = async (token: string, title: string, body: string) => {
+  await sendNotification(token, title, body);
 };
 
 export const runAutoReleaseJob = async () => {
@@ -32,7 +24,7 @@ export const runAutoReleaseJob = async () => {
         data: { releaseStatus: "released", releasedAt: new Date() },
       });
 
-      await prisma.order.update({
+      const order = await prisma.order.update({
         where: { id: escrow.orderId },
         data: { status: "completed", escrowStatus: "released" },
       });
@@ -53,17 +45,38 @@ export const runAutoReleaseJob = async () => {
 
       const vendor = await prisma.vendor.findUnique({
         where: { id: escrow.order.vendorId },
+        include: { user: { select: { notificationToken: true } } },
       });
 
-      await notify(escrow.order.userId, "ESCROW_AUTO_RELEASED", {
-        orderId: escrow.orderId,
+      await WalletService.creditAvailableBalance({
+        userId: vendor!.ownerId,
+        amount: order.totalAmount,
       });
+      await WalletService.createCreditTransaction({
+        userId: vendor!.ownerId,
+        amount: order.totalAmount,
+        type: "ORDER COMPLETED",
+        metaData: { orderId: order.id, vendorId: vendor!.id },
+      });
+
+      await WalletService.releaseEscow({
+        userId: order.userId,
+        amount: order.totalAmount,
+        orderId: order.id,
+      });
+
+      await notify(
+        escrow.order.userId,
+        "ORDER AUTOMATICALLY COMPLETED",
+        "Your order has been automatically completed.",
+      );
 
       if (vendor) {
-        await notify(vendor.ownerId, "PAYMENT_RELEASED", {
-          orderId: escrow.orderId,
-          amount: escrow.amountHeld - escrow.commission,
-        });
+        await notify(
+          vendor.user.notificationToken!,
+          "ORDER AUTOMATICALLY COMPLETED",
+          "A payment has been released to your account.",
+        );
       }
 
       console.log(`[EscrowJob] Released orderId=${escrow.orderId}`);
@@ -83,11 +96,10 @@ export const runAutoCancelJob = async () => {
   });
 
   for (const order of stale) {
-
-   
-
-    const updated = await prisma.order.updateMany({ where: { id: order.id }, 
-      data: { status: "cancelled", escrowStatus: "released" } });
+    const updated = await prisma.order.updateMany({
+      where: { id: order.id },
+      data: { status: "cancelled", escrowStatus: "released" },
+    });
 
     if (updated.count === 0) continue;
 
@@ -98,37 +110,31 @@ export const runAutoCancelJob = async () => {
       });
     }
 
-     const wallet = await prisma.wallet.findUnique({
-      where: {userId: order.userId},
-      include: {fiat: true}
-    })
-    
-    await prisma.fiat.update({
-      where: { walletId: wallet?.id},
-      data: {
-        availableBalance: {
-          increment: order.totalAmount
-        },
-        lockedBalance: {
-          decrement: order.totalAmount
-        }
-      }, 
-    })
+      const vendor = await prisma.vendor.findUnique({
+        where: { id: order.vendorId },
+        include: { user: { select: { notificationToken: true } } },
+      });
+      const user = await prisma.user.findUnique({
+        where: { id: order.userId },
+        select: { notificationToken: true },
+      });
 
-    await prisma.transaction.update({
-      where: {orderId: order.id},
-      data: {
-        status: 'failed'
-      }
-    })
+    if (!vendor) continue;
+    if (!user) continue;
 
-    // Notify buyer
-    await admin.firestore().collection("notifications").add({
-      recipientId: order.userId,
-      type: "ORDER_AUTO_CANCELLED",
-      data: { orderId: order.id, vendorName: order.vendorName },
-      read: false,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    await WalletService.releaseEscow({
+      userId: order.userId,
+      amount: order.totalAmount,
+      orderId: order.id,
     });
+
+    await notify(user?.notificationToken!, "ORDER AUTOMATICALLY CANCELLED",
+       'Your order has been automatically cancelled due to no response from the vendor.');
+
+    await notify(
+      vendor.user.notificationToken!,
+      "ORDER AUTOMATICALLY CANCELLED",
+      'An order has been automatically cancelled due to no response from you.',
+    );
   }
 };

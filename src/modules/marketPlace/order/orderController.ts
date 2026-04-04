@@ -10,18 +10,8 @@ import {
 } from "../../../shared/utils/transactionResponse";
 import { FieldValue } from "firebase-admin/firestore";
 
-const notify = async (
-  userId: string,
-  type: string,
-  data: Record<string, any>,
-) => {
-  await admin.firestore().collection("notifications").add({
-    recipientId: userId,
-    type,
-    data,
-    read: false,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-  });
+const notify = async (token: string, title: string, body: string) => {
+  await sendNotification(token, title, body);
 };
 
 const recalculateVendorMetrics = async (vendorId: string) => {
@@ -181,11 +171,11 @@ const placeOrder = async (req: any, res: any) => {
     });
 
     await prisma.transaction.update({
-      where: {id: lock.transaction.id},
+      where: { id: lock.transaction.id },
       data: {
-        orderId: order.id
-      }
-    })
+        orderId: order.id,
+      },
+    });
 
     const commission = subtotal * (config.commissionPercent / 100);
 
@@ -218,11 +208,6 @@ const placeOrder = async (req: any, res: any) => {
     } catch (err) {
       console.error("Chat creation failed:", err);
     }
-
-    await notify(branch.vendor.ownerId, "NEW_ORDER", {
-      orderId: order.id,
-      totalAmount,
-    });
 
     if (notificationToken) {
       await sendNotification(
@@ -315,6 +300,7 @@ const confirmDelivery = async (req: any, res: any) => {
 
     const vendor = await prisma.vendor.findUnique({
       where: { id: order.vendorId },
+      include: { user: true },
     });
 
     await WalletService.creditAvailableBalance({
@@ -324,11 +310,33 @@ const confirmDelivery = async (req: any, res: any) => {
     await WalletService.createCreditTransaction({
       userId: vendor!.ownerId,
       amount: order.totalAmount,
-      type: "ORDER_COMPLETED",
+      type: "ORDER COMPLETED",
       metaData: { orderId, vendorId: vendor!.id },
     });
 
-    if (vendor) await notify(vendor.ownerId, "ORDER_COMPLETED", { orderId });
+    await WalletService.releaseEscow({
+      userId: userId,
+      amount: order.totalAmount,
+      orderId: order.id,
+    });
+
+    if (vendor)
+      await notify(
+        vendor.user.notificationToken!,
+        "ORDER COMPLETED",
+        "Your order has been completed and payment released to your wallet.",
+      );
+    const user = await prisma.user.findUnique({
+      where: { id: order.userId },
+      select: { notificationToken: true },
+    });
+    if (user) {
+      await notify(
+        user.notificationToken!,
+        "ORDER COMPLETED",
+        "Your order has been completed and payment has been released to the counterparty.",
+      );
+    }
 
     res.json(updated);
   } catch (e: any) {
@@ -497,7 +505,18 @@ const updateOrderStatus = async (req: any, res: any) => {
       include: { items: true },
     });
 
-    await notify(order.userId, "ORDER_STATUS_UPDATED", { orderId, status });
+    const user = await prisma.user.findUnique({
+      where: { id: order.userId },
+      select: { notificationToken: true },
+    });
+
+    if (user?.notificationToken) {
+      await notify(
+        user.notificationToken,
+        "Order Status Updated",
+        "Your order status has been updated.",
+      );
+    }
 
     res.json(updated);
   } catch (e: any) {

@@ -2,19 +2,10 @@ import { prisma } from "../../../prisma";
 import admin from "firebase-admin";
 const phonePattern = /(\+?\d[\d\s\-]{8,}\d)/;
 import { sendNotification } from "../../../shared/utils/notification";
+import { WalletService } from "../../../shared/services/wallet.service";
 
-const notify = async (
-  userId: string,
-  type: string,
-  data: Record<string, any>,
-) => {
-  await admin.firestore().collection("notifications").add({
-    recipientId: userId,
-    type,
-    data,
-    read: false,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-  });
+const notify = async (token: string, title: string, body: string) => {
+  await sendNotification(token, title, body);
 };
 
 const getVendors = async (req: any, res: any) => {
@@ -47,8 +38,6 @@ const getVendors = async (req: any, res: any) => {
         { phone: { contains: search, mode: "insensitive" } },
       ];
     }
-
-
 
     const vendors = await prisma.vendor.findMany({
       where,
@@ -165,7 +154,16 @@ const resolveAppeal = async (req: any, res: any) => {
 
     const vendor = await prisma.vendor.findUnique({
       where: { id: order.vendorId },
+      include: { user: { select: { notificationToken: true } } },
     });
+
+    const user = await prisma.user.findUnique({
+      where: { id: order.userId },
+      select: { notificationToken: true },
+    });
+
+    if (!vendor) return res.status(404).json({ message: "Vendor not found" });
+    if (!user) return res.status(404).json({ message: "User not found" });
 
     if (decision === "release_vendor") {
       await prisma.order.update({
@@ -177,33 +175,41 @@ const resolveAppeal = async (req: any, res: any) => {
         data: { releaseStatus: "released", releasedAt: new Date() },
       });
 
-      if (vendor) {
-        const all = await prisma.order.findMany({
-          where: { vendorId: vendor.id },
-        });
-        const completed = all.filter((o: any) => o.status === "completed");
-        const rate =
-          all.length > 0
-            ? Math.round((completed.length / all.length) * 100)
-            : 100;
-        await prisma.vendor.update({
-          where: { id: vendor.id },
-          data: {
-            totalCompletedOrders: completed.length,
-            completionRate: rate,
-          },
-        });
-        await notify(vendor.ownerId, "APPEAL_RESOLVED_IN_YOUR_FAVOUR", {
-          orderId,
-          reason,
-        });
-      }
-
-      await notify(order.userId, "APPEAL_RESOLVED", {
-        orderId,
-        decision: "in_favour_of_vendor",
-        reason,
+      const all = await prisma.order.findMany({
+        where: { vendorId: vendor.id },
       });
+      const completed = all.filter((o: any) => o.status === "completed");
+      const rate =
+        all.length > 0
+          ? Math.round((completed.length / all.length) * 100)
+          : 100;
+      await prisma.vendor.update({
+        where: { id: vendor.id },
+        data: {
+          totalCompletedOrders: completed.length,
+          completionRate: rate,
+        },
+      });
+
+      await WalletService.creditAvailableBalance({
+        userId: vendor!.ownerId,
+        amount: order.totalAmount,
+      });
+      await WalletService.createCreditTransaction({
+        userId: vendor!.ownerId,
+        amount: order.totalAmount,
+        type: "ORDER COMPLETED",
+        metaData: { orderId, vendorId: vendor!.id },
+      });
+
+      await notify(
+        vendor.user.notificationToken!,
+        "APPEAL RESOLVED IN YOUR FAVOUR",
+        reason,
+      );
+
+      await notify(user?.notificationToken!, "APPEAL RESOLVED", reason);
+
     } else {
       await prisma.order.update({
         where: { id: orderId },
@@ -214,18 +220,19 @@ const resolveAppeal = async (req: any, res: any) => {
         data: { releaseStatus: "refunded", releasedAt: new Date() },
       });
 
-      await notify(order.userId, "APPEAL_RESOLVED", {
-        orderId,
-        decision: "in_favour_of_user",
-        reason,
+      await WalletService.releaseEscow({
+        userId: order.userId,
+        amount: order.totalAmount,
+        orderId: order.id,
       });
 
-      if (vendor) {
-        await notify(vendor.ownerId, "APPEAL_RESOLVED_REFUND_ISSUED", {
-          orderId,
-          reason,
-        });
-      }
+      await notify(user?.notificationToken!, "APPEAL RESOLVED", reason);
+
+      await notify(
+        vendor.user.notificationToken!,
+        "APPEAL RESOLVED - REFUND ISSUED",
+        reason,
+      );
     }
 
     res.json({ success: true, decision, orderId });

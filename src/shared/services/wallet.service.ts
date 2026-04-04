@@ -715,11 +715,11 @@ export class WalletService {
   static async releaseEscow({
     userId,
     amount,
-    transactionId,
+    orderId,
   }: {
     userId: string;
     amount: number;
-    transactionId: string;
+    orderId: string;
   }) {
     return prisma.$transaction(async (tx) => {
       const { fiat } = await this.ensureWalletWithFiat(tx, userId);
@@ -736,7 +736,7 @@ export class WalletService {
       });
 
       const transaction = await tx.transaction.update({
-        where: { id: transactionId },
+        where: { orderId: orderId },
         data: { status: TransactionStatus.success },
       });
 
