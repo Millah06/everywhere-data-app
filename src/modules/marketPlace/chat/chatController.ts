@@ -9,7 +9,7 @@ const sendMessage = async (req: any, res: any) => {
     const userId = req.user?.id;
 
     const { orderId } = req.params;
-    const { message, senderName } = req.body;
+    const { message } = req.body;
 
     if (!message || message.trim() === "")
       return res.status(400).json({ message: "Message cannot be empty" });
@@ -49,7 +49,7 @@ const sendMessage = async (req: any, res: any) => {
       .collection("messages")
       .add({
         senderId: userId,
-        senderName: senderName || (isVendor ? vendor!.name : "Customer"),
+        senderName: (isVendor ? vendor!.name : "Customer"),
         message: message.trim(),
         isAdmin: false,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
