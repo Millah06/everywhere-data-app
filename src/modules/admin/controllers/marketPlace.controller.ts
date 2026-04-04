@@ -60,11 +60,20 @@ const approveVendor = async (req: any, res: any) => {
     const vendor = await prisma.vendor.update({
       where: { id: vendorId },
       data: { status: "approved", isVisible: true },
+      include: {
+        user: {
+          select: { notificationToken: true },
+        },
+      },
     });
 
-    await notify(vendor.ownerId, "VENDOR_APPROVED", {
-      vendorName: vendor.name,
-    });
+    if (vendor.user.notificationToken) {
+      await sendNotification(
+        vendor.user.notificationToken,
+        "VENDOR APPROVED",
+        'Your store application has been approved!'
+      );
+    }
 
     res.json(vendor);
   } catch (e: any) {
@@ -103,11 +112,6 @@ const rejectVendor = async (req: any, res: any) => {
         reason || "Application did not meet our requirements",
       );
     }
-
-    await notify(vendor.ownerId, "VENDOR_REJECTED", {
-      vendorName: vendor.name,
-      reason: reason || "Application did not meet our requirements",
-    });
 
     res.json(vendor);
   } catch (e: any) {
