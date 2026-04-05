@@ -338,7 +338,7 @@ const getFollowingFeed = async (req: any, res: any) => {
 
 const followUser = async (req: any, res: any) => {
   try {
-    const followerId = req.user?.uid;
+    const followerId = req.user?.id;
     const { userId: followingId } = req.body;
 
     if (!followerId || !followingId) {
@@ -387,8 +387,6 @@ const followUser = async (req: any, res: any) => {
           followingCount: { increment: 1 },
         },
       });
-
-       
 
     });
 

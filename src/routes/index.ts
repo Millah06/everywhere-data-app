@@ -7,7 +7,6 @@ import kycRouter from "../modules/kyc/routes/routes";
 import userRouter from "../modules/user/routes/routes";
 import authRouter from "../modules/auth/routes/routes";
 import walletRouter from "../modules/wallet/routes/routes";
-import { authMiddleware } from "../middleware/auth";
 
 const router = Router();
 

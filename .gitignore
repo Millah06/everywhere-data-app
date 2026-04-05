@@ -3,3 +3,16 @@ node_modules
 .env
 
 /generated/prisma
+
+# Ignore log files
+logs
+*.log
+node_modules/
+dist/
+build/
+coverage/
+.DS_Store
+.idea/
+.vscode/
+*.suo
+*.ntvs* 

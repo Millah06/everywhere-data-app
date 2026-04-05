@@ -1,5 +1,4 @@
 import { prisma } from "../../../prisma";
-import admin from "firebase-admin";
 
 const addMenuItem = async (req: any, res: any) => {
   try {
