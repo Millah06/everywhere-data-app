@@ -88,6 +88,55 @@ export const getWalletTransactions = async (req: any, res: any) => {
   }
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ADD THIS to your existing wallet.controller.ts
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * GET /wallet/transactions/:id
+ * Returns the full transaction including metaData for receipt rendering.
+ * Only the authenticated user's own transactions are accessible.
+ */
+export const getTransactionDetail = async (req: any, res: any) => {
+  try {
+    const { id } = req.params as { id: string };
+
+    const transaction = await prisma.transaction.findFirst({
+      where: {
+        id,
+        userId: req.user!.id, // scoped to authenticated user — never expose other users' data
+      },
+      select: {
+        id: true,
+        type: true,
+        amount: true,
+        status: true,
+        message: true,
+        transactionRef: true,
+        humanRef: true,
+        clientRequestId: true,
+        metaData: true,
+        orderId: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    if (!transaction) {
+      return res.status(404).json({ message: "Transaction not found." });
+    }
+
+    return res.json({
+      data: {
+        ...transaction,
+        transactionStatus: prismaTransactionStatusToApi(transaction.status),
+      },
+    });
+  } catch (e: any) {
+    return res.status(500).json({ message: e.message });
+  }
+};
+
 /**
  * POST /wallet/webhook/paystack
  * Paystack webhook handler — credits user wallet on successful charge
@@ -267,6 +316,7 @@ export const internalTransfer = async (req: any, res: any) => {
 export default {
     getWallet,
     getWalletTransactions,
+    getTransactionDetail,
     paystackWebhook,
     internalTransfer,
 }

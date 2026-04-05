@@ -36,11 +36,20 @@ router.delete(
 
 // ── WALLET ────────────────────────────────────────────────────────────────
 router.get("/wallet", authMiddleware, walletController.getWallet);
+
 router.get(
   "/wallet/transactions",
   authMiddleware,
   walletController.getWalletTransactions,
 );
+
+// New detail route — add directly below the existing one:
+router.get(
+  "/wallet/transactions/:id",
+  authMiddleware,
+  walletController.getTransactionDetail,
+);
+
 router.post(
   "/wallet/transfer",
   authMiddleware,

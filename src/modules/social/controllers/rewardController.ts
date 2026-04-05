@@ -1,6 +1,7 @@
 // backend/controllers/rewardController.ts
 
 import admin from "firebase-admin";
+import { prisma } from "../../../prisma";
 import {
   calculateReward,
   calculateLevel,
@@ -20,7 +21,6 @@ import {
 } from "../../../shared/helpers/wallet.helpers";
 
 // Assume these exist
-
 const rewardPost = async (req: any, res: any) => {
   const senderId = req.user?.uid;
   const { postId, amount } = req.body;
@@ -59,19 +59,14 @@ const rewardPost = async (req: any, res: any) => {
     }
 
     // Get post (do this OUTSIDE transaction)
-    const postRef = db.collection("posts").doc(postId);
-    const postDoc = await postRef.get();
 
-    console.log("Post exists:", postDoc.exists);
+    const post = await prisma.post.findUnique({ where: { id: postId } });
 
-    if (!postDoc.exists) {
+    if (!post) {
       return res.status(404).json({ error: "Post not found" });
     }
 
-    const postData = postDoc.data();
-    const creatorId = postData?.userId;
-
-    console.log("Creator ID:", creatorId);
+    const creatorId = post.userId;
 
     if (!creatorId) {
       return res.status(400).json({ error: "Invalid post data" });
@@ -85,15 +80,12 @@ const rewardPost = async (req: any, res: any) => {
     const calculation = calculateReward(amount);
     console.log("Calculation:", calculation);
 
-    // Now do Firestore transaction
-    console.log("Starting Firestore transaction...");
-
     await db.runTransaction(async (transaction) => {
       // Deduct from wallet BEFORE transaction
       console.log("Deducting from wallet...");
       await deductWallet(senderId, amount);
       console.log("Wallet deducted successfully");
-      
+
       const statsRef = db.collection("creatorStats").doc(creatorId);
 
       // READ PHASE
@@ -144,14 +136,14 @@ const rewardPost = async (req: any, res: any) => {
 
       // Update post
       console.log("Updating post...");
-      transaction.update(postRef, {
-        rewardCount: admin.firestore.FieldValue.increment(1),
-        rewardPointsTotal: admin.firestore.FieldValue.increment(
-          calculation.pointsAwarded,
-        ),
+      await prisma.post.update({
+        where: { id: postId },
+        data: {
+          rewardCount: { increment: 1 },
+          rewardPointsTotal: { increment: calculation.pointsAwarded },
+        },
       });
 
-      // Log transaction
       console.log("Creating transaction log...");
       const txRef = db.collection("rewardTransactions").doc();
       transaction.set(txRef, {
@@ -307,26 +299,24 @@ const boostPost = async (req: any, res: any) => {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
-    const postRef = db.collection("posts").doc(postId);
-    const postDoc = await postRef.get();
+    const post = await prisma.post.findUnique({ where: { id: postId } });
 
-    if (!postDoc.exists) {
+    if (!post) {
       return res.status(404).json({ error: "Post not found" });
     }
 
-    const postData = postDoc.data();
-
-    if (postData?.userId !== userId) {
+    if (post.userId !== userId) {
       return res.status(403).json({ error: "Can only boost your own posts" });
     }
 
-    if (postData?.boostExpiresAt && postData.boostExpiresAt.toMillis() > Date.now()) {
-      return res.status(400).json({ error: `Post is already boosted until 
-        ${new Date(postData.boostExpiresAt.toMillis()).toLocaleString()} 
-        ${postData.boostExpiresAt.toMillis() > Date.now() ? 'UTC' : ''}` });
+    if (post.boostExpiresAt && post.boostExpiresAt.getTime() > Date.now()) {
+      return res.status(400).json({
+        error: `Post is already boosted until 
+        ${new Date(post.boostExpiresAt).toLocaleString()} 
+        ${post.boostExpiresAt.getTime() > Date.now() ? "UTC" : ""}`,
+      });
     }
 
-    
     // Check wallet balance
     const balance = await getWalletBalance(userId);
     if (balance < BOOST_COST) {
@@ -337,8 +327,8 @@ const boostPost = async (req: any, res: any) => {
       });
     }
 
-    const boostExpiresAt = admin.firestore.Timestamp.fromDate(
-      new Date(Date.now() + BOOST_DURATION_HOURS * 60 * 60 * 1000),
+    const boostExpiresAt = new Date(
+      Date.now() + BOOST_DURATION_HOURS * 60 * 60 * 1000,
     );
 
     await db.runTransaction(async (transaction) => {
@@ -346,9 +336,12 @@ const boostPost = async (req: any, res: any) => {
       await deductWallet(userId, BOOST_COST);
 
       // Update post
-      transaction.update(postRef, {
-        isBoosted: true,
-        boostExpiresAt,
+      await prisma.post.update({
+        where: { id: postId },
+        data: {
+          isBoosted: true,
+          boostExpiresAt: boostExpiresAt,
+        },
       });
 
       // Log transaction
@@ -369,7 +362,7 @@ const boostPost = async (req: any, res: any) => {
 
     res.json({
       success: true,
-      boostExpiresAt: boostExpiresAt.toMillis(),
+      boostExpiresAt: boostExpiresAt,
       message: `Post boosted for ${BOOST_DURATION_HOURS} hours`,
     });
   } catch (error) {
