@@ -349,42 +349,31 @@ const followUser = async (req: any, res: any) => {
       return res.status(400).json({ error: "Cannot follow yourself" });
     }
 
-    const followRef = db.collection("follows").doc();
+    const followingUser = await prisma.user.findUnique({
+      where: { id: followingId },
+    });
 
-    await db.runTransaction(async (transaction) => {
-      // Check if already following
-      const existingFollow = await db
-        .collection("follows")
-        .where("followerId", "==", followerId)
-        .where("followingId", "==", followingId)
-        .limit(1)
-        .get();
+    if (!followingUser) {
+      return res.status(404).json({ error: "User to follow not found" });
+    }
 
-      if (!existingFollow.empty) {
+    await prisma.$transaction(async (tx) => {
+      const existingFollow = await tx.follow.findUnique({
+        where: { followerId_followingId: { followerId, followingId } },
+      });
+      if (existingFollow) {
         throw new Error("Already following this user");
       }
-
-      // Create follow
-      transaction.set(followRef, {
-        followId: followRef.id,
-        followerId,
-        followingId,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      await tx.follow.create({
+        data: {
+          followerId,
+          followingId,
+        },
       });
-
-      // Update follower count
-      await prisma.userProfile.update({
+      await tx.userProfile.update({
         where: { userId: followingId },
         data: {
           followersCount: { increment: 1 },
-        },
-      });
-
-      // Update following count
-      await prisma.userProfile.update({
-        where: { userId: followerId },
-        data: {
-          followingCount: { increment: 1 },
         },
       });
 
@@ -399,6 +388,7 @@ const followUser = async (req: any, res: any) => {
   }
 };
 
+        
 const unfollowUser = async (req: any, res: any) => {
   try {
     const followerId = req.user?.uid;
@@ -407,43 +397,38 @@ const unfollowUser = async (req: any, res: any) => {
     if (!followerId || !followingId) {
       return res.status(400).json({ error: "Missing required fields" });
     }
+    if (followerId === followingId) {
+      return res.status(400).json({ error: "Cannot unfollow yourself" });
+    }
+    const followingUser = await prisma.user.findUnique({
+      where: { id: followingId },
+    });
 
-    await db.runTransaction(async (transaction) => {
-      // Find follow document
-      const followSnapshot = await db
-        .collection("follows")
-        .where("followerId", "==", followerId)
-        .where("followingId", "==", followingId)
-        .limit(1)
-        .get();
-
-      if (followSnapshot.empty) {
+    if (!followingUser) {
+      return res.status(404).json({ error: "User to unfollow not found" });
+    }
+    await prisma.$transaction(async (tx) => {
+      const existingFollow = await tx.follow.findUnique({
+        where: { followerId_followingId: { followerId, followingId } },
+      });
+      if (!existingFollow) {
         throw new Error("Not following this user");
       }
-
-      const followDoc = followSnapshot.docs[0];
-
-      // Delete follow
-      transaction.delete(followDoc.ref);
-
-      // Update follower count
-      await prisma.userProfile.update({
-        where: {userId: followingId},
+      await tx.follow.delete({
+        where: { followerId_followingId: { followerId, followingId } },
+      });
+      await tx.userProfile.update({
+        where: { userId: followingId },
         data: {
-          followersCount: {decrement: 1}
-        }
-      })
-
-      // Update following count
-       await prisma.userProfile.update({
-        where: {userId: followerId},
+          followersCount: { decrement: 1 },
+        },
+      });
+      await tx.userProfile.update({
+        where: { userId: followerId },
         data: {
-          followingCount: {decrement: 1}
-        }
-      })
-
-      
-
+          followingCount: { decrement: 1 },
+        },
+      });
     });
 
     res.json({ success: true });
