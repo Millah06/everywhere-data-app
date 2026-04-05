@@ -460,13 +460,18 @@ const unfollowUser = async (req: any, res: any) => {
 const getUserProfile = async (req: any, res: any) => {
   try {
     const { userId } = req.params;
-    const currentUserId = req.user?.uid;
+    const currentUserId = req.user?.id;
 
     console.log("🔍 Getting profile for userId:", userId);
     console.log("🔍 Current user:", currentUserId);
 
     const user = await prisma.user.findUnique({
-      where: {firebaseUid: userId}
+      where: {id: userId},
+      include: { 
+        userProfile: true,
+        followers: true,
+       },
+
     })
 
     if (!user) {
@@ -475,9 +480,7 @@ const getUserProfile = async (req: any, res: any) => {
 
     // Try userProfiles first, fallback to users
     // let profileDoc = await db.collection("userProfiles").doc(userId).get();
-    let profileDoc = await prisma.userProfile.findUnique({
-      where: {userId: user.id}
-    })
+    let profileDoc =  user.userProfile;
 
     
 
@@ -488,14 +491,9 @@ const getUserProfile = async (req: any, res: any) => {
 
     // Check if current user follows this user
     let isFollowing = false;
-    if (currentUserId && currentUserId !== userId) {
-      const followDoc = await db
-        .collection("follows")
-        .where("followerId", "==", currentUserId)
-        .where("followingId", "==", userId)
-        .limit(1)
-        .get();
-      isFollowing = !followDoc.empty;
+
+    if (user.followers.some(f => f.followerId === currentUserId)) {
+      isFollowing = true;
     }
 
     // Get badges
