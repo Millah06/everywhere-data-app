@@ -267,6 +267,7 @@ model Post {
   comments PostComment[]
   savedBy       SavedPost[]
   viewTrackers  PostViewTracker[]
+  reposts        Repost[] @relation("OriginalPost")
 
   @@index([userId, createdAt])
   @@index([algorithmScore, createdAt])
@@ -320,6 +321,7 @@ model Repost {
   originalPostId String
   reposterId     String
   createdAt      DateTime @default(now())
+  originalPost   Post     @relation("OriginalPost", fields: [originalPostId], references: [id], onDelete: Cascade)
 
   @@index([originalPostId])
   @@index([reposterId])
