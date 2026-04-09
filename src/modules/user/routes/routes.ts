@@ -15,7 +15,7 @@ const router = Router();
 // ── USERS ─────────────────────────────────────────────────────────────────
 router.get("/users/me", authMiddleware, getMeController.getMe);
 router.patch("/users/me", authMiddleware, updateMeController.updateMe);
-router.patch(
+router.put(
   "/users/me/profile",
   authMiddleware,
   updateProfileController.updateProfile,

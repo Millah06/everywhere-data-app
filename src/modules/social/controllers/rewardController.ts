@@ -292,7 +292,7 @@ const convertRewardPoints = async (req: any, res: any) => {
 const boostPost = async (req: any, res: any) => {
   try {
     // const userId = req.user?.uid;
-    const userId = req.user?.uid;
+    const userId = req.user?.id;
     const { postId } = req.body;
 
     if (!userId || !postId) {
