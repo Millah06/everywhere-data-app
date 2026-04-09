@@ -9,6 +9,7 @@ import {
   withTransactionStatus,
 } from "../../../shared/utils/transactionResponse";
 import { FieldValue } from "firebase-admin/firestore";
+import { TX_TYPE } from "../../../shared/utils/transactionType";
 
 const notify = async (token: string, title: string, body: string) => {
   await sendNotification(token, title, body);
@@ -310,7 +311,7 @@ const confirmDelivery = async (req: any, res: any) => {
     await WalletService.createCreditTransaction({
       userId: vendor!.ownerId,
       amount: order.totalAmount,
-      type: "ORDER COMPLETED",
+      type: TX_TYPE.ORDER_PAYMENT,
       metaData: { orderId, vendorId: vendor!.id },
     });
 
@@ -476,7 +477,7 @@ const updateOrderStatus = async (req: any, res: any) => {
     if (status === "cancelled") {
       await prisma.escrow.update({
         where: { orderId },
-        data: { releaseStatus: "refunded", refundedAt: new Date() },
+        data: { releaseStatus: "refunded", refundedAt: new Date(),},
       });
 
       updated = await prisma.order.update({
@@ -492,7 +493,7 @@ const updateOrderStatus = async (req: any, res: any) => {
       await WalletService.createCreditTransaction({
         userId: updated.userId,
         amount: order.totalAmount,
-        type: "ORDER_CANCEL_REFUND",
+        type: TX_TYPE.ORDER_REFUND,
         metaData: { orderId, vendorId: order.vendorId },
       });
 

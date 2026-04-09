@@ -16,10 +16,10 @@ const createWalletTransfer = async (req: any, res: any) => {
     }
 
     const sender = await prisma.user.findUnique({
-      where: { firebaseUid: senderUid },
+      where: { transferUid: senderUid },
     });
     const receiver = await prisma.user.findUnique({
-      where: { firebaseUid: receiverUid },
+      where: { transferUid: receiverUid },
     });
 
     if (!sender || !receiver) {
@@ -77,6 +77,12 @@ const createWalletTransfer = async (req: any, res: any) => {
         `You received ₦${amount} from ${senderName} via ${bankName}`,
       );
     }
+
+    await sendNotification(
+      sender.notificationToken!,
+      "Transfer Sent",
+      `You sent ₦${amount} to ${receiver.name || "Unknown"} via ${bankName}`,
+    );
 
     return res.status(200).json({
       status: "success",

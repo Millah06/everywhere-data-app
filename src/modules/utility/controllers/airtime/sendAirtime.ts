@@ -3,6 +3,7 @@ import { calculateTransaction } from "../../helpers/calculateTransaction";
 import { generateUUID } from "../../../../shared/utils/uuid";
 import { WalletService } from "../../../../shared/services/wallet.service";
 import { prisma } from "../../../../prisma";
+import {  TxType, TX_TYPE } from "../../../../shared/utils/transactionType";
 import {
   classifyVendorTransactionStatus,
   prismaTransactionStatusToApi,
@@ -72,6 +73,7 @@ const sendAirtimeSecure = async (req: any, res: any) => {
     const finalAmountToPay = calculation.walletToDeduct;
 
     const lock = await WalletService.lockUtilityFundsAndCreateTx({
+      type: TX_TYPE.AIRTIME,
       userId,
       clientRequestId,
       humanRef,

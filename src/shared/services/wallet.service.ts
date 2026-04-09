@@ -5,6 +5,7 @@ import {
   type Fiat,
 } from "@prisma/client";
 import { prisma } from "../../prisma";
+import { TX_TYPE, TxType } from "../utils/transactionType";
 
 export type PrismaTx = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
 
@@ -73,6 +74,7 @@ export class WalletService {
    * Balance source of truth: Fiat (availableBalance / lockedBalance / rewardBalance).
    */
   static async lockUtilityFundsAndCreateTx(input: {
+    type: TxType;
     userId: string;
     clientRequestId: string;
     humanRef: string;
@@ -142,7 +144,7 @@ export class WalletService {
       const transaction = await tx.transaction.create({
         data: {
           userId,
-          type: "utility",
+          type: input.type,
           amount: walletToDeduct,
           status: TransactionStatus.pending,
           clientRequestId,
@@ -377,7 +379,7 @@ export class WalletService {
   static async createCreditTransaction(input: {
     userId: string;
     amount: number;
-    type: string;
+    type: TxType;
     status?: TransactionStatus;
     metaData?: Prisma.JsonObject;
     transactionRef?: string;
@@ -466,7 +468,7 @@ export class WalletService {
         data: {
           userId: senderId,
           transferId: transfer.id,
-          type: "wallet",
+          type: TX_TYPE.TRANSFER_DEBIT,
           amount,
           status: TransactionStatus.success,
           clientRequestId,
@@ -481,7 +483,7 @@ export class WalletService {
         data: {
           userId: receiverId,
           transferId: transfer.id,
-          type: "wallet",
+          type: TX_TYPE.TRANSFER_CREDIT,
           amount,
           status: TransactionStatus.success,
           clientRequestId: null,
@@ -548,7 +550,7 @@ export class WalletService {
           clientRequestId,
           humanRef,
           paystackRecipient,
-          mode: "wallet",
+          mode: TX_TYPE.WALLET_WITHDRAWAL,
           metaData: metaData ?? {},
         },
       });
@@ -675,7 +677,7 @@ export class WalletService {
     amount: number;
     metaData?: Prisma.JsonValue | null;
     clientRequestId: string;
-    type: "escrow";
+    type: TxType;
   }) {
     return prisma.$transaction(async (tx) => {
       const { fiat } = await this.ensureWalletWithFiat(tx, userId);

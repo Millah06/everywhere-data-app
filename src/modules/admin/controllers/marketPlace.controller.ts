@@ -3,6 +3,7 @@ import admin from "firebase-admin";
 const phonePattern = /(\+?\d[\d\s\-]{8,}\d)/;
 import { sendNotification } from "../../../shared/utils/notification";
 import { WalletService } from "../../../shared/services/wallet.service";
+import { TX_TYPE } from "../../../shared/utils/transactionType";
 
 const notify = async (token: string, title: string, body: string) => {
   await sendNotification(token, title, body);
@@ -71,7 +72,7 @@ const approveVendor = async (req: any, res: any) => {
       await sendNotification(
         vendor.user.notificationToken,
         "VENDOR APPROVED",
-        'Your store application has been approved!'
+        "Your store application has been approved!",
       );
     }
 
@@ -202,7 +203,7 @@ const resolveAppeal = async (req: any, res: any) => {
       await WalletService.createCreditTransaction({
         userId: vendor!.ownerId,
         amount: order.totalAmount,
-        type: "ORDER COMPLETED",
+        type: TX_TYPE.ORDER_PAYMENT,
         metaData: { orderId, vendorId: vendor!.id },
       });
 
@@ -213,9 +214,8 @@ const resolveAppeal = async (req: any, res: any) => {
       );
 
       await notify(user?.notificationToken!, "APPEAL RESOLVED", reason);
-
     } else {
-      await prisma.order.update({
+      const updated = await prisma.order.update({
         where: { id: orderId },
         data: { status: "cancelled", escrowStatus: "refunded" },
       });
@@ -224,10 +224,16 @@ const resolveAppeal = async (req: any, res: any) => {
         data: { releaseStatus: "refunded", releasedAt: new Date() },
       });
 
-      await WalletService.releaseEscow({
-        userId: order.userId,
+      await WalletService.moveLockedToAvailableCredit({
+        userId: updated.userId,
         amount: order.totalAmount,
-        orderId: order.id,
+      });
+
+      await WalletService.createCreditTransaction({
+        userId: updated.userId,
+        amount: order.totalAmount,
+        type: TX_TYPE.ORDER_REFUND,
+        metaData: { orderId, vendorId: order.vendorId },
       });
 
       await notify(user?.notificationToken!, "APPEAL RESOLVED", reason);

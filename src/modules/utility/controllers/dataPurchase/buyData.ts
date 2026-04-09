@@ -9,6 +9,7 @@ import {
   withTransactionStatus,
   type TransactionStatusApi,
 } from "../../../../shared/utils/transactionResponse";
+import { TX_TYPE } from "../../../../shared/utils/transactionType";
 
 const buyDataSecure = async (req: any, res: any) => {
   try {
@@ -78,6 +79,7 @@ const buyDataSecure = async (req: any, res: any) => {
     const finalAmountToPay = calculation.walletToDeduct;
 
     const lock = await WalletService.lockUtilityFundsAndCreateTx({
+      type: TX_TYPE.DATA,
       userId,
       clientRequestId,
       humanRef,

@@ -2,6 +2,7 @@ import { prisma } from "../../../prisma";
 import admin from "firebase-admin";
 import { sendNotification } from "../../../shared/utils/notification";
 import { WalletService } from "../../../shared/services/wallet.service";
+import { TX_TYPE } from "../../../shared/utils/transactionType";
 
 const notify = async (token: string, title: string, body: string) => {
   await sendNotification(token, title, body);
@@ -55,7 +56,7 @@ export const runAutoReleaseJob = async () => {
       await WalletService.createCreditTransaction({
         userId: vendor!.ownerId,
         amount: order.totalAmount,
-        type: "ORDER COMPLETED",
+        type: TX_TYPE.ORDER_PAYMENT,
         metaData: { orderId: order.id, vendorId: vendor!.id },
       });
 
@@ -110,31 +111,41 @@ export const runAutoCancelJob = async () => {
       });
     }
 
-      const vendor = await prisma.vendor.findUnique({
-        where: { id: order.vendorId },
-        include: { user: { select: { notificationToken: true } } },
-      });
-      const user = await prisma.user.findUnique({
-        where: { id: order.userId },
-        select: { notificationToken: true },
-      });
+    const vendor = await prisma.vendor.findUnique({
+      where: { id: order.vendorId },
+      include: { user: { select: { notificationToken: true } } },
+    });
+
+    const user = await prisma.user.findUnique({
+      where: { id: order.userId },
+      select: { notificationToken: true },
+    });
 
     if (!vendor) continue;
     if (!user) continue;
 
-    await WalletService.releaseEscow({
+    await WalletService.moveLockedToAvailableCredit({
       userId: order.userId,
       amount: order.totalAmount,
-      orderId: order.id,
     });
 
-    await notify(user?.notificationToken!, "ORDER AUTOMATICALLY CANCELLED",
-       'Your order has been automatically cancelled due to no response from the vendor.');
+    await WalletService.createCreditTransaction({
+      userId: order.userId,
+      amount: order.totalAmount,
+      type: TX_TYPE.ORDER_REFUND,
+      metaData: { orderId: order.id, vendorId: order.vendorId },
+    });
+
+    await notify(
+      user?.notificationToken!,
+      "ORDER AUTOMATICALLY CANCELLED",
+      "Your order has been automatically cancelled due to no response from the vendor.",
+    );
 
     await notify(
       vendor.user.notificationToken!,
       "ORDER AUTOMATICALLY CANCELLED",
-      'An order has been automatically cancelled due to no response from you.',
+      "An order has been automatically cancelled due to no response from you.",
     );
   }
 };

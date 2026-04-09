@@ -16,9 +16,7 @@ const getFeed = async (req: any, res: any) => {
 
     const rows = await prisma.post.findMany({
       take: limitNum,
-      ...(lastPostId
-        ? { cursor: { id: lastPostId as string }, skip: 1 }
-        : {}),
+      ...(lastPostId ? { cursor: { id: lastPostId as string }, skip: 1 } : {}),
       orderBy: [{ isBoosted: "desc" }, { createdAt: "desc" }],
     });
 
@@ -202,53 +200,54 @@ const getTopEarners = async (req: any, res: any) => {
 
 const getForYouFeed = async (req: any, res: any) => {
   try {
-    const firebaseUid = req.user?.uid;
-    const prismaUserId = req.user?.id;
+    const userId = req.user?.id;
     const { limit = 20, lastPostId } = req.query;
     const limitNum = Math.min(parseInt(limit as string), 50);
 
-    console.log("📥 Getting For You feed for user:", firebaseUid);
-
-    const rows = await prisma.post.findMany({
-      take: limitNum,
-      ...(lastPostId
-        ? { cursor: { id: lastPostId as string }, skip: 1 }
-        : {}),
-      orderBy: [{ algorithmScore: "desc" }, { createdAt: "desc" }],
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { following: true },
     });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Build query with optional cursor
+    const queryOptions: any = {
+      take: limitNum,
+      orderBy: [{ algorithmScore: "desc" }, { createdAt: "desc" }],
+      include: {
+        _count: {
+          select: { reposts: true },
+        },
+      },
+    };
+
+    // Only add cursor if lastPostId is provided (handles initial load)
+    if (lastPostId) {
+      queryOptions.cursor = { id: lastPostId as string };
+      queryOptions.skip = 1;
+    }
+
+    const rows = await prisma.post.findMany(queryOptions);
 
     console.log("✅ Found", rows.length, "posts");
 
-    const posts = await Promise.all(
-      rows.map(async (doc) => {
-        let isFollowing = false;
-        if (firebaseUid && doc.userId !== prismaUserId) {
-          const author = await prisma.user.findUnique({
-            where: { id: doc.userId },
-            select: { firebaseUid: true },
-          });
-          if (author?.firebaseUid) {
-            const followDoc = await db
-              .collection("follows")
-              .where("followerId", "==", firebaseUid)
-              .where("followingId", "==", author.firebaseUid)
-              .limit(1)
-              .get();
-            isFollowing = !followDoc.empty;
-          }
-        }
+    const posts = rows.map((doc: any) => {
+      let isFollowing = false;
+      if (userId && doc.userId !== userId) {
+        isFollowing = user.following.some((f) => f.followingId === doc.userId);
+      }
 
-        const repostCount = await prisma.repost.count({
-          where: { originalPostId: doc.id },
-        });
+        
 
-        return postToClientShape({
-          ...doc,
-          isFollowing,
-          repostCount,
-        });
-      }),
-    );
+      return postToClientShape({
+        ...doc,
+        isFollowing,
+        repostCount: doc._count.reposts || 0,
+      });
+    });
 
     res.json({
       success: true,
@@ -257,68 +256,56 @@ const getForYouFeed = async (req: any, res: any) => {
     });
   } catch (error: any) {
     console.error("❌ Get For You feed error:", error);
-    res
-      .status(500)
-      .json({ error: "Failed to fetch feed", message: error.message });
+    res.status(500).json({ error: "Failed to fetch feed", message: error.message });
   }
 };
 
 const getFollowingFeed = async (req: any, res: any) => {
   try {
-    const userId = req.user?.uid;
+    const userId = req.user?.id;
     const { limit = 20, lastPostId } = req.query;
     const limitNum = Math.min(parseInt(limit as string), 50);
 
-    console.log("📥 Getting Following feed for user:", userId);
-
-    const followingSnapshot = await db
-      .collection("follows")
-      .where("followerId", "==", userId)
-      .get();
-
-    const followingFirebaseIds = followingSnapshot.docs.map(
-      (doc) => doc.data().followingId,
-    );
-
-    console.log("👥 Following", followingFirebaseIds.length, "users");
-
-    if (followingFirebaseIds.length === 0) {
-      return res.json({ success: true, posts: [], hasMore: false });
-    }
-
-    const prismaAuthors = await prisma.user.findMany({
-      where: { firebaseUid: { in: followingFirebaseIds } },
-      select: { id: true },
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { following: true },
     });
-    const authorIds = prismaAuthors.map((u) => u.id);
 
-    if (authorIds.length === 0) {
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const followingIds = user.following.map(f => f.followingId);
+
+    if (followingIds.length === 0) {
       return res.json({ success: true, posts: [], hasMore: false });
     }
 
-    const rows = await prisma.post.findMany({
-      where: { userId: { in: authorIds } },
+    const queryOptions: any = {
+      where: { userId: { in: followingIds } },
       take: limitNum,
-      ...(lastPostId
-        ? { cursor: { id: lastPostId as string }, skip: 1 }
-        : {}),
       orderBy: { createdAt: "desc" },
-    });
+      include: {
+        _count: {
+          select: { reposts: true },
+        },
+      },
+    };
 
-    const posts = await Promise.all(
-      rows.map(async (doc) => {
-        const repostCount = await prisma.repost.count({
-          where: { originalPostId: doc.id },
-        });
-        return postToClientShape({
-          ...doc,
-          isFollowing: true,
-          repostCount,
-        });
+    if (lastPostId) {
+      queryOptions.cursor = { id: lastPostId as string };
+      queryOptions.skip = 1;
+    }
+
+    const rows = await prisma.post.findMany(queryOptions);
+
+    const posts = rows.map((doc: any) => ({
+      ...postToClientShape({
+        ...doc,
+        isFollowing: true,
+        repostCount: doc._count.reposts,
       }),
-    );
-
-    console.log("✅ Returning", posts.length, "posts");
+    }));
 
     res.json({
       success: true,
@@ -327,12 +314,10 @@ const getFollowingFeed = async (req: any, res: any) => {
     });
   } catch (error: any) {
     console.error("❌ Get Following feed error:", error);
-    res
-      .status(500)
-      .json({
-        error: "Failed to fetch following feed",
-        message: error.message,
-      });
+    res.status(500).json({
+      error: "Failed to fetch following feed",
+      message: error.message,
+    });
   }
 };
 
@@ -376,7 +361,6 @@ const followUser = async (req: any, res: any) => {
           followersCount: { increment: 1 },
         },
       });
-
     });
 
     res.json({ success: true });
@@ -388,7 +372,6 @@ const followUser = async (req: any, res: any) => {
   }
 };
 
-        
 const unfollowUser = async (req: any, res: any) => {
   try {
     const followerId = req.user?.uid;
@@ -432,7 +415,6 @@ const unfollowUser = async (req: any, res: any) => {
     });
 
     res.json({ success: true });
-
   } catch (error: any) {
     console.error("Unfollow user error:", error);
     res
@@ -451,13 +433,12 @@ const getUserProfile = async (req: any, res: any) => {
     console.log("🔍 Current user:", currentUserId);
 
     const user = await prisma.user.findUnique({
-      where: {id: userId},
-      include: { 
+      where: { id: userId },
+      include: {
         userProfile: true,
         followers: true,
-       },
-
-    })
+      },
+    });
 
     if (!user) {
       return res.status(404).json({ error: "User not found" });
@@ -465,9 +446,7 @@ const getUserProfile = async (req: any, res: any) => {
 
     // Try userProfiles first, fallback to users
     // let profileDoc = await db.collection("userProfiles").doc(userId).get();
-    let profileDoc =  user.userProfile;
-
-    
+    let profileDoc = user.userProfile;
 
     if (!profileDoc) {
       console.log("❌ Profile not found in userProfiles or users");
@@ -477,7 +456,7 @@ const getUserProfile = async (req: any, res: any) => {
     // Check if current user follows this user
     let isFollowing = false;
 
-    if (user.followers.some(f => f.followerId === currentUserId)) {
+    if (user.followers.some((f) => f.followerId === currentUserId)) {
       isFollowing = true;
     }
 
@@ -496,8 +475,8 @@ const getUserProfile = async (req: any, res: any) => {
       phoneNumber: user.phone || null,
       avatar: profileDoc.avatarUrl || null,
       coverImage: profileDoc.coverPhotoUrl || null,
-      website: null,
-      location: null,
+      website: profileDoc.website || null,
+      location: profileDoc.location || null,
       isPrivate: profileDoc.isPrivate || false,
       allowFollowersToMessage: profileDoc.allowFollwersToMessage || false,
       followerCount: profileDoc.followersCount || 0,
@@ -528,15 +507,10 @@ const getUserProfile = async (req: any, res: any) => {
   }
 };
 
-// backend/controllers/socialController.ts - UPDATE getUserPosts
-
-// backend/controllers/socialController.ts - UPDATE getUserPosts
-
 const getUserPosts = async (req: any, res: any) => {
   try {
     const { userId: userParam } = req.params;
-    const currentUserId = req.user?.uid;
-    const prismaViewerId = req.user?.id;
+    const currentUserId = req.user?.id;
     const { limit = 20 } = req.query;
 
     console.log("📥 Getting posts for user:", userParam);
@@ -555,27 +529,21 @@ const getUserPosts = async (req: any, res: any) => {
 
     const authorFb = await prisma.user.findUnique({
       where: { id: authorId },
-      select: { firebaseUid: true },
+      include: { followers: true },
     });
 
     let isFollowing = false;
-    if (currentUserId && authorFb?.firebaseUid && currentUserId !== authorFb.firebaseUid) {
-      const followDoc = await db
-        .collection("follows")
-        .where("followerId", "==", currentUserId)
-        .where("followingId", "==", authorFb.firebaseUid)
-        .limit(1)
-        .get();
-      isFollowing = !followDoc.empty;
+    if (currentUserId && authorFb && authorFb.id !== currentUserId) {
+      isFollowing = authorFb.followers.some((f) => f.followerId === currentUserId);
     }
 
     const posts = await Promise.all(
       rows.map(async (doc) => {
         let isLiked = false;
-        if (prismaViewerId) {
+        if (currentUserId) {
           const like = await prisma.postLike.findUnique({
             where: {
-              postId_userId: { postId: doc.id, userId: prismaViewerId },
+              postId_userId: { postId: doc.id, userId: currentUserId },
             },
           });
           isLiked = !!like;
@@ -762,7 +730,6 @@ const checkLikeStatus = async (req: any, res: any) => {
 const getSavedPosts = async (req: any, res: any) => {
   try {
     const userId = req.user?.id;
-    const firebaseUid = req.user?.uid;
     const { limit = 20 } = req.query;
 
     if (!userId) {
@@ -793,16 +760,10 @@ const getSavedPosts = async (req: any, res: any) => {
         if (data.userId !== userId) {
           const author = await prisma.user.findUnique({
             where: { id: data.userId },
-            select: { firebaseUid: true },
+            include: { followers: true },
           });
-          if (author?.firebaseUid && firebaseUid) {
-            const followDoc = await db
-              .collection("follows")
-              .where("followerId", "==", firebaseUid)
-              .where("followingId", "==", author.firebaseUid)
-              .limit(1)
-              .get();
-            isFollowing = !followDoc.empty;
+          if (author) {
+            isFollowing = author.followers.some((f) => f.followerId === userId);
           }
         }
 
@@ -858,7 +819,6 @@ export default {
   getTopEarners,
   followUser,
   unfollowUser,
-
   getUserProfile,
   getUserPosts,
   deletePost,

@@ -3,6 +3,7 @@ import crypto from "crypto";
 import { prisma } from "../../../prisma";
 import { WalletService } from "../../../shared/services/wallet.service";
 import { sendNotification } from "../../../shared/utils/notification";
+import { TX_TYPE } from "../../../shared/utils/transactionType";
 
 const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET!;
 
@@ -51,7 +52,7 @@ const paystackWebhook = async (req: Request, res: Response): Promise<void> => {
         await WalletService.createCreditTransaction({
           userId: user.id,
           amount,
-          type: "credit",
+          type: TX_TYPE.WALLET_FUNDING,
           metaData: {
             method: "Paystack VA",
             description: `Wallet funding via ${data.authorization?.bank}`,
