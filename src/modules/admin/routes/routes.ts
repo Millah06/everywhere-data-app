@@ -5,6 +5,7 @@ import dashboardController from "../controllers/dashboard.controller";
 import analyticsController from "../controllers/analytics.controller";
 import transactionsController from "../controllers/transactions.controller";
 import marketPlaceController from "../controllers/marketPlace.controller";
+import supportChatController from "../controllers/supportChat.controller";
 
 
 const router = Router();
@@ -126,6 +127,17 @@ router.get("/admin/config", authMiddleware,
   requireAdmin, marketPlaceController.getConfig);
 router.patch("/admin/config", authMiddleware,
   requireAdmin, marketPlaceController.updateConfig);
+
+
+// ── SUPPORT CHAT ─────────────────────────────────────────────────────────────
+// These routes are protected by auth middleware. Add role checks in each
+// controller function when you have admin roles set up in your system.
+router.post("/admin/support/chats/:chatId/delete", 
+  authMiddleware, requireAdmin, supportChatController.closedAndDeleteChat);
+router.post("/admin/support/chats/:chatId/messages", 
+  authMiddleware, requireAdmin, supportChatController.adminSendMessage);
+router.get("/admin/support/chats",
+  authMiddleware, requireAdmin, supportChatController.getAllChats);
 
 
 export default router;
