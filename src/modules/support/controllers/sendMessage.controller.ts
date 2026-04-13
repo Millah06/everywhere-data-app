@@ -5,7 +5,10 @@ import { QueryDocumentSnapshot } from "firebase-admin/firestore";
 const sendMessage = async (req: any, res: any) => {
   try {
     const userId = req.user?.id;
-    const { chatId, message } = req.body;
+
+    const { chatId } = req.params;
+
+    const { message } = req.body;
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) return res.status(404).json({ message: "User not found" });
 
@@ -25,7 +28,7 @@ const sendMessage = async (req: any, res: any) => {
       isAdmin: false,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
-    
+
     res.status(201).json({ message: "Message sent successfully", messageId: msgRef.id });
   } catch (e: any) {
     res.status(401).json({ message: e.message });
