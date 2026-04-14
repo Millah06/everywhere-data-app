@@ -466,8 +466,8 @@ const getUserProfile = async (req: any, res: any) => {
 
     const profile = {
       userId,
-      username: user.name || "Anonymous",
-      displayName: user.name || "Anonymous",
+      userName: user.name || "Anonymous",
+      displayName: profileDoc.userName || "Anonymous",
       bio: profileDoc.bio || "",
       chatTag: null,
       transferUID: user.transferUid || null,
