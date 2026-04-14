@@ -10,19 +10,50 @@ export const updateProfile = async (req: any, res: any) => {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
-    const { bio, avatarUrl, isPrivate, allowFollwersToMessage } = req.body;
+    const { data } = req.body;
 
     const updated = await prisma.userProfile.update({
       where: { userId: userId },
-      data: {
-        ...(bio !== undefined && { bio }),
-        ...(avatarUrl !== undefined && { avatarUrl }),
-        ...(isPrivate !== undefined && { isPrivate }),
-        ...(allowFollwersToMessage !== undefined && { allowFollwersToMessage }),
-      },
+      data: data
     });
 
     return res.json(updated);
+  } catch (e: any) {
+    return res.status(500).json({ message: e.message });
+  }
+};
+
+const togglePrivateAccount = async (req: any, res: any) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+    const { isPrivate } = req.body;
+    if (isPrivate === undefined)
+      return res.status(400).json({ message: "isPrivate is required." });
+    await prisma.userProfile.update({
+      where: { userId },
+      data: { isPrivate },
+    });
+    return res.json({ success: true, isPrivate });
+  } catch (e: any) {
+    return res.status(500).json({ message: e.message });
+  }
+};
+
+const toggleAllowFollowersToMessage = async (req: any, res: any) => {
+  try {    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+    const { allowFollowersToMessage } = req.body;
+    if ( allowFollowersToMessage === undefined)      
+      return res.status(400)
+        .json({ message: "allowFollowersToMessage is required." });
+
+    await prisma.userProfile.update({
+      where: { userId },
+      data: { allowFollowersToMessage },
+    });
+
+    return res.json({ success: true, allowFollowersToMessage });
   } catch (e: any) {
     return res.status(500).json({ message: e.message });
   }
@@ -149,5 +180,7 @@ export default {
     updateProfile,
     getReferralStats,
     uploadProfilePicture,
-    uploadCoverPhoto
+    uploadCoverPhoto,
+    togglePrivateAccount,
+    toggleAllowFollowersToMessage
 }

@@ -46,5 +46,16 @@ router.post(
   upload.single("image"),
   updateProfileController.uploadCoverPhoto
 );
+router.post(
+  "/users/me/toggle-private",
+  authMiddleware,
+  updateProfileController.togglePrivateAccount
+);
+
+router.post(
+  "/users/me/toggle-allow-messages",
+  authMiddleware,
+  updateProfileController.toggleAllowFollowersToMessage
+);
 
 export default router;

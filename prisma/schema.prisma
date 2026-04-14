@@ -93,6 +93,7 @@ model User {
   updatedAt            DateTime  @updatedAt
 
   kyc            Kyc?
+  badges         Badges?
   virtualAccount VirtualAccount[]
   wallet         Wallet?
   orders         Order[]
@@ -128,7 +129,7 @@ model UserProfile {
   businessEmail          String?
   avatarUrl              String   @default("")
   coverPhotoUrl          String   @default("")
-  badges                 String[]
+  badges                 Badges?
 
   followersCount         Int      @default(0)
   followingCount         Int      @default(0)
@@ -140,12 +141,25 @@ model UserProfile {
 
   totalEarnings          Float    @default(0)
 
-  allowFollwersToMessage Boolean  @default(false)
+  allowFollowersToMessage Boolean  @default(false)
   weeklyEarned           Float    @default(0)
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Badges {
+  id         String   @id @default(uuid())
+  profileId     String @unique
+  userId        String @unique
+  kycBlue   Boolean  @default(false)
+  premiumPaid  Boolean  @default(false)
+  business   Boolean  @default(false)
+  creatorEarnings Boolean @default(false)
+
+  userPofile UserProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model VirtualAccount {
