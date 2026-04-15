@@ -21,7 +21,6 @@ const addMenuItem = async (req: any, res: any) => {
         name,
         description,
         price,
-        imageUrl: "",
         isAvailable: isAvailable !== undefined ? isAvailable : true,
       },
     });
