@@ -3,14 +3,12 @@ import { prisma } from "../../../prisma";
 
 const getManagersMenu = async (req: any, res: any) => {
   try {
-    if (!req.user) return res.status(401).json({ message: "Unauthorized" });
+    if (!req.user.id) return res.status(401).json({ message: "Unauthorized" });
 
     const items = await prisma.menuItem.findMany({
       where: { branch: { managerId: req.user.id } },
       orderBy: { createdAt: "desc" },
     });
-
-     
 
     res.json(items);
   } catch (e: any) {

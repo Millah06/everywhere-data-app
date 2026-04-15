@@ -22,6 +22,7 @@ router.get("/vendor/list",  authMiddleware, vendorController.getVendors);
 router.get("/vendor/me", authMiddleware, vendorController.getMyVendor);
 router.get("/vendor/metrics", authMiddleware, vendorController.getVendorMetrics);
 router.get("/vendor/:id", authMiddleware, vendorController.getVendorById);
+router.get("/vendor/manager/branches", authMiddleware, vendorController.getMangerBranches);
 router.post("/vendor/apply", authMiddleware, vendorController.applyAsVendor);
 router.put("/vendor/visibility", authMiddleware, vendorController.toggleVisibility);
 router.put("/vendor/pod-toggle", vendorController.togglePodAcceptance); // simple toggle like visibility
@@ -49,7 +50,7 @@ router.get("/menu/manager/branches", authMiddleware, menuController.getManagerBr
 router.put("/menu/:itemId/update", authMiddleware, menuController.updateMenuItem);
 router.delete("/menu/:itemId/delete", authMiddleware, menuController.deleteMenuItem);
 router.put("/menu/:itemId/toggle", authMiddleware, menuController.toggleMenuItemAvailability);
-router.post("/menu/:itemId/upload-image", authMiddleware, upload.single("image"), uploadController.uploadMenuItemImage);
+router.post("/menu/:itemId/upload-images", authMiddleware, upload.array("images", 10), uploadController.uploadMenuItemImages);
 
 // ── ORDER ─────────────────────────────────────────────────────────────────────
 // NOTE: /order/mine and /order/vendor/list MUST come before /order/:orderId

@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import sharp from "sharp";
 import { v4 as uuidv4 } from "uuid";
 import path from "path";
@@ -49,7 +49,7 @@ export const uploadImage = async (
     try {
       imageBuffer = await sharp(file.buffer)
         .resize(1920, 1080, { fit: "inside", withoutEnlargement: true })
-        .jpeg({ quality: 80 })
+        .jpeg({ quality: 100 })
         .toBuffer();
     } catch (compressError) {
       console.log("Compression failed, using original:", compressError);
@@ -80,4 +80,33 @@ export const uploadImage = async (
   }
 };
 
-export default { uploadImage };
+export const uploadMultipleImages = async (
+  files: Express.Multer.File[],
+  userId: String,
+  fileCategory: String,
+) => {
+  const uploadPromises = files.map((file) =>
+    uploadImage(file, userId, fileCategory),
+  );
+  return Promise.all(uploadPromises);
+};
+
+export const deleteImage = async (fileKey: string) => {
+  try {
+    const deleteCommand = new DeleteObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: fileKey,
+    });
+    await s3Client.send(deleteCommand);
+  } catch (error) {
+    console.error("Delete error:", error);
+    throw new Error(`Unexpected Error: failed to delete image. Key: ${fileKey}`);
+  }
+};
+
+export const deleteMultipleImages = async (fileKeys: string[]) => {
+  const deletePromises = fileKeys.map((key) => deleteImage(key));
+  return Promise.all(deletePromises);
+};
+
+export default { uploadImage, uploadMultipleImages, deleteImage, deleteMultipleImages };

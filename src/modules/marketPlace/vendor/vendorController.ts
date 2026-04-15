@@ -533,6 +533,21 @@ const requestVerification = async (req: any, res: any) => {
   }
 };
 
+const getMangerBranches = async (req: any, res: any) => {
+  try {
+    const userId = req.user?.id;
+
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    const branches = await prisma.branch.findMany({
+      where: { managerId: userId },
+    });
+    res.json(branches);
+  } catch (e: any) {
+    res.status(401).json({ message: e.message });
+  }   
+};
+
 export default {
   getVendors,
   getVendorById,
@@ -546,4 +561,5 @@ export default {
   togglePodAcceptance,
   requestVerification,
   deleteVendorAccount,
+  getMangerBranches
 };
