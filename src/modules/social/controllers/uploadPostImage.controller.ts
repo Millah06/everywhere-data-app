@@ -10,11 +10,9 @@ export const uploadPostImages = async (req: any, res: any) => {
     }
 
     // Check if file exists (multer adds it to req.file)
-    if (!req.file) {
-      return res.status(400).json({ error: "No image file provided" });
+     if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: "No images added." });
     }
-
-    const imageUrl = await uploadImage(req.file, userId, "post");
 
     let imageUrls: string[] = [];
     
