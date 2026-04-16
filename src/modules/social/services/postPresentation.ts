@@ -8,7 +8,6 @@ export function postToClientShape(
     postId: p.id,
     userId: p.userId,
     userName: p.userName,
-    diplayName: p.
     userAvatar: p.userAvatar,
     title: p.title,
     text: p.text,
