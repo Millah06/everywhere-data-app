@@ -1,4 +1,5 @@
 import { Post } from "@prisma/client";
+import { title } from "process";
 
 export function postToClientShape(
   p: Post & { repostCount?: number; isFollowing?: boolean; isLikedByCurrentUser?: boolean; isSaved?: boolean },
@@ -7,9 +8,11 @@ export function postToClientShape(
     postId: p.id,
     userId: p.userId,
     userName: p.userName,
+    diplayName: p.
     userAvatar: p.userAvatar,
+    title: p.title,
     text: p.text,
-    imageUrl: p.imageUrl,
+    images: p.images,
     hashtags: p.hashtags,
     createdAt: p.createdAt.getTime(),
     likeCount: p.likeCount,

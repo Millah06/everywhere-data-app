@@ -40,7 +40,7 @@ const repostPost = async (req: any, res: any) => {
       userName: reposter?.name || "Anonymous",
       userAvatar: reposter?.userProfile?.avatarUrl || null,
       text: text || originalPostDoc.text || "",
-      imageUrl: originalPostDoc.imageUrl || null,
+      images: originalPostDoc.images || null,
       hashtags: originalPostDoc.hashtags || [],
       likeCount: 0,
       commentCount: 0,

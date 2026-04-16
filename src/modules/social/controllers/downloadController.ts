@@ -18,15 +18,16 @@ const generatePostDownload = async (req: any, res: any) => {
       return res.status(404).json({ error: "Post not found" });
     }
 
-    if (!postData?.imageUrl) {
+    if (!postData?.images) {
       return res.status(400).json({ error: "Post has no image" });
     }
 
     console.log("✅ Returning image metadata for client-side processing");
 
+    // this needs attention
     res.json({
       success: true,
-      imageUrl: postData.imageUrl,
+      imageUrls: postData.images,
       caption: postData.text || "",
       username: postData.userName || "user",
       processOnClient: true,
