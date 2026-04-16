@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { uploadPostImage } from "../controllers/uploadPostImage.controller";
+import { uploadPostImages } from "../controllers/uploadPostImage.controller";
 import { authMiddleware } from "../../../middleware/auth";
 import badgeController from "../controllers/badgeController";
 import downloadController from "../controllers/downloadController";
@@ -24,7 +24,7 @@ router.post('/social/like', authMiddleware, socialController.likePost);
 router.post('/social/comment', authMiddleware, socialController.commentOnPost);
 router.get('/social/posts/:postId/comments', authMiddleware, socialController.getComments);
 router.get('/social/leaderboard', authMiddleware, socialController.getTopEarners);
-router.post('/social/upload', authMiddleware, upload.single('image'), uploadPostImage);
+router.post('/social/upload', authMiddleware, upload.array('images', 10), uploadPostImages);
 
 // backend/index.ts - ADD THIS ROUTE
 router.post('/social/likes/check', authMiddleware, socialController.checkLikeStatus);

@@ -1,6 +1,6 @@
-import { uploadImage } from "../../../shared/services/uploadImage.service";
+import { uploadImage, uploadMultipleImages } from "../../../shared/services/uploadImage.service";
 // Your simple upload function - JUST LIKE YOUR createPost!
-export const uploadPostImage = async (req: any, res: any) => {
+export const uploadPostImages = async (req: any, res: any) => {
   try {
     // Check auth first (just like your createPost)
     const userId = req.user?.id;
@@ -16,9 +16,28 @@ export const uploadPostImage = async (req: any, res: any) => {
 
     const imageUrl = await uploadImage(req.file, userId, "post");
 
+    let imageUrls: string[] = [];
+    
+    if (req.files.length > 1) {
+      imageUrls = await uploadMultipleImages(
+        req.files,
+        userId,
+        'post',
+      );
+
+       
+    } else {
+      const imageUrl = await uploadImage(
+        req.files[0],
+        userId,
+        'post',
+      );
+      imageUrls = [imageUrl];
+    }
+    
     res.status(200).json({
       success: true,
-      url: imageUrl, // Same format as your Firebase function returned
+      urls: imageUrls, // Same format as your Firebase function returned
       message: "Image uploaded successfully",
     });
   } catch (error) {

@@ -1,16 +1,17 @@
 import { prisma } from "../../../prisma";
 
-
 const getManagersMenu = async (req: any, res: any) => {
   try {
-
-   
     if (!req.user) return res.status(401).json({ message: "Unauthorized" });
 
-     const userId = req.user.id;
+    const userId = req.user?.id;
 
     const items = await prisma.menuItem.findMany({
-      where: { branch: { managerId: userId } },
+      where: { 
+        branch: { 
+          managerId: userId 
+        },
+      },
       orderBy: { createdAt: "desc" },
     });
 
@@ -35,8 +36,6 @@ const getBranchMenu = async (req: any, res: any) => {
       orderBy: { createdAt: "desc" },
     });
 
-     
-
     res.json(items);
   } catch (e: any) {
     res.status(401).json({ message: e.message });
@@ -60,20 +59,19 @@ const addBranch = async (req: any, res: any) => {
   try {
     const userId = req.user?.id;
 
-    const { state, lga, area, street, estimatedDeliveryTime, vendorId } = req.body;
+    const { state, lga, area, street, estimatedDeliveryTime, vendorId } =
+      req.body;
 
     const vendor = await prisma.vendor.findUnique({ where: { id: vendorId } });
     if (!vendor) return res.status(404).json({ message: "Vendor not found" });
-     
+
     // const branchManager = await prisma.branch.findFirst({
     //   where: { isMainBranch: true, managerId: userId,  },
     // });
 
     // if (!branchManager) return res.status(404).json({ message: "Only branch managers can add branch" });
-  
 
     const branch = await prisma.branch.create({
-
       data: {
         vendorId: vendorId,
         state,
@@ -97,8 +95,7 @@ const addBranch = async (req: any, res: any) => {
 
 const updateBranch = async (req: any, res: any) => {
   try {
-
-    const userId = req.user?.id
+    const userId = req.user?.id;
 
     const { branchId } = req.params;
     const { state, lga, area, street, estimatedDeliveryTime } = req.body;
@@ -205,7 +202,10 @@ const deleteDeliveryZone = async (req: any, res: any) => {
     if (!zone)
       return res.status(404).json({ message: "Delivery zone not found" });
 
-    if (zone.branch.vendor.ownerId !== userId && zone.branch.managerId !== userId)
+    if (
+      zone.branch.vendor.ownerId !== userId &&
+      zone.branch.managerId !== userId
+    )
       return res.status(403).json({ message: "Unauthorized" });
 
     await prisma.deliveryZone.delete({ where: { id: zoneId } });
@@ -226,7 +226,8 @@ const setMainBranch = async (req: any, res: any) => {
       include: { vendor: true },
     });
     if (!branch) return res.status(404).json({ message: "Branch not found" });
-    if (branch.vendor.ownerId !== userId) return res.status(403).json({ message: "Forbidden" });
+    if (branch.vendor.ownerId !== userId)
+      return res.status(403).json({ message: "Forbidden" });
 
     // Demote all, promote this one
     await prisma.branch.updateMany({
@@ -249,14 +250,16 @@ const assignManager = async (req: any, res: any) => {
     const userId = req.user?.id;
 
     const { branchId } = req.params;
-     
 
     const branch = await prisma.branch.findUnique({
       where: { id: branchId },
       include: { vendor: true },
     });
     if (!branch) return res.status(404).json({ message: "Branch not found" });
-    if (branch.vendor.ownerId !== userId) return res.status(403).json({ message: "Only vendor owner can assign managers" });
+    if (branch.vendor.ownerId !== userId)
+      return res
+        .status(403)
+        .json({ message: "Only vendor owner can assign managers" });
 
     await prisma.branch.update({
       where: { id: branchId },

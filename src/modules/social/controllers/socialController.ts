@@ -577,7 +577,7 @@ const createPost = async (req: any, res: any) => {
   try {
     const userId = req.user?.id;
 
-    const { text, imageUrl } = req.body;
+    const { title, text, images } = req.body;
 
     if (!userId) {
       return res.status(401).json({ error: "Unauthorized" });
@@ -607,8 +607,9 @@ const createPost = async (req: any, res: any) => {
       userId,
       userName: user?.name || "Anonymous",
       userAvatar: userDoc?.avatarUrl || null,
+      title: title?.trim() || null,
       text: text.trim(),
-      imageUrl: imageUrl || null,
+      images: images || [],
       hashtags,
       likeCount: 0,
       commentCount: 0,

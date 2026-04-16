@@ -257,8 +257,9 @@ model Post {
   userId             String
   userName           String    @default("Anonymous")
   userAvatar         String?
+  title              String?
   text               String    @default("")
-  imageUrl           String?
+  images             String[]    @default([])
   hashtags           String[]
   likeCount          Int       @default(0)
   commentCount       Int       @default(0)
