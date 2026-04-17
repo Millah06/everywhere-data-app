@@ -256,7 +256,7 @@ model Post {
   id                 String    @id @default(uuid())
   userId             String
   userName           String    @default("Anonymous")
-  userHandle         String    
+  userHandle         String?   
   userAvatar         String?
   title              String?
   text               String    @default("")
