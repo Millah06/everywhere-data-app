@@ -256,6 +256,7 @@ model Post {
   id                 String    @id @default(uuid())
   userId             String
   userName           String    @default("Anonymous")
+  userHandle         String    
   userAvatar         String?
   title              String?
   text               String    @default("")
@@ -272,6 +273,7 @@ model Post {
   isRepost           Boolean   @default(false)
   originalPostId     String?
   originalUserName   String?
+  originalUserHandle String?
   score              Float     @default(0)
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt

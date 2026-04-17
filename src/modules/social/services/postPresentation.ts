@@ -2,12 +2,14 @@ import { Post } from "@prisma/client";
 import { title } from "process";
 
 export function postToClientShape(
-  p: Post & { repostCount?: number; isFollowing?: boolean; isLikedByCurrentUser?: boolean; isSaved?: boolean },
+  p: Post & { repostCount?: number; 
+    isFollowing?: boolean; isLikedByCurrentUser?: boolean; isSaved?: boolean },
 ) {
   return {
     postId: p.id,
     userId: p.userId,
     userName: p.userName,
+    userHandle : p.userHandle,
     userAvatar: p.userAvatar,
     title: p.title,
     text: p.text,
@@ -25,6 +27,7 @@ export function postToClientShape(
     isRepost: p.isRepost,
     originalPostId: p.originalPostId,
     originalUserName: p.originalUserName,
+    originalUserHandle: p.originalUserHandle,
     score: p.score,
     ...(p.repostCount !== undefined && { repostCount: p.repostCount }),
     ...(p.isFollowing !== undefined && { isFollowing: p.isFollowing }),

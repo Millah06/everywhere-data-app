@@ -119,18 +119,9 @@ const commentOnPost = async (req: any, res: any) => {
       return c;
     });
 
-    const commentData = {
-      commentId: comment.id,
-      userUid: userId,
-      userName: comment.userName,
-      userAvatar: comment.userAvatar,
-      text: comment.text,
-      createdAt: comment.createdAt.getTime(),
-    };
-
     res.status(201).json({
       success: true,
-      comment: commentData,
+      comment: comment,
     });
   } catch (error) {
     console.error("Comment error:", error);
@@ -141,24 +132,23 @@ const commentOnPost = async (req: any, res: any) => {
 const getComments = async (req: any, res: any) => {
   try {
     const { postId } = req.params;
-    const { limit = 20 } = req.query;
+    const { limit = 20, cursor } = req.query;
 
-    const rows = await prisma.postComment.findMany({
+    const comments = await prisma.postComment.findMany({
       where: { postId },
       orderBy: { createdAt: "desc" },
       take: parseInt(limit as string),
+      ...(cursor && {
+        cursor: { id: cursor },
+        skip: 1,
+      }),
     });
 
-    const comments = rows.map((doc) => ({
-      commentId: doc.id,
-      userUid: doc.userId,
-      userName: doc.userName,
-      userAvatar: doc.userAvatar,
-      text: doc.text,
-      createdAt: doc.createdAt.getTime(),
-    }));
-
-    res.json({ success: true, comments });
+    res.json({
+      success: true,
+      comments,
+      nextCursor: comments.length ? comments[comments.length - 1].id : null,
+    });
   } catch (error) {
     console.error("Get comments error:", error);
     res.status(500).json({ error: "Failed to fetch comments" });
@@ -240,8 +230,6 @@ const getForYouFeed = async (req: any, res: any) => {
         isFollowing = user.following.some((f) => f.followingId === doc.userId);
       }
 
-        
-
       return postToClientShape({
         ...doc,
         isFollowing,
@@ -256,7 +244,9 @@ const getForYouFeed = async (req: any, res: any) => {
     });
   } catch (error: any) {
     console.error("❌ Get For You feed error:", error);
-    res.status(500).json({ error: "Failed to fetch feed", message: error.message });
+    res
+      .status(500)
+      .json({ error: "Failed to fetch feed", message: error.message });
   }
 };
 
@@ -275,7 +265,7 @@ const getFollowingFeed = async (req: any, res: any) => {
       return res.status(404).json({ error: "User not found" });
     }
 
-    const followingIds = user.following.map(f => f.followingId);
+    const followingIds = user.following.map((f) => f.followingId);
 
     if (followingIds.length === 0) {
       return res.json({ success: true, posts: [], hasMore: false });
@@ -535,7 +525,9 @@ const getUserPosts = async (req: any, res: any) => {
 
     let isFollowing = false;
     if (currentUserId && authorFb && authorFb.id !== currentUserId) {
-      isFollowing = authorFb.followers.some((f) => f.followerId === currentUserId);
+      isFollowing = authorFb.followers.some(
+        (f) => f.followerId === currentUserId,
+      );
     }
 
     const posts = await Promise.all(
@@ -601,11 +593,21 @@ const createPost = async (req: any, res: any) => {
     const userDoc = await prisma.userProfile.findUnique({
       where: { userId: userId },
     });
-    const user = await prisma.user.findUnique({ where: { id: userId } });
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        userProfile: {
+          select: {
+            userName: true,
+          },
+        },
+      },
+    });
 
     const postData = {
       userId,
       userName: user?.name || "Anonymous",
+      userHandle: user?.userProfile?.userName || '',
       userAvatar: userDoc?.avatarUrl || null,
       title: title?.trim() || null,
       text: text.trim(),

@@ -12,7 +12,9 @@ const repostPost = async (req: any, res: any) => {
     }
 
     const originalPostDoc = await prisma.post.findUnique({
-      where: { id: postId },
+      where: {
+        id: postId,
+      },
     });
 
     if (!originalPostDoc) {
@@ -38,6 +40,7 @@ const repostPost = async (req: any, res: any) => {
     const repostData = {
       userId: reposterPrismaId,
       userName: reposter?.name || "Anonymous",
+      userHandle: reposter?.userProfile?.userName || '',
       userAvatar: reposter?.userProfile?.avatarUrl || null,
       text: text || originalPostDoc.text || "",
       images: originalPostDoc.images || null,
@@ -52,6 +55,7 @@ const repostPost = async (req: any, res: any) => {
       isRepost: true,
       originalPostId: postId,
       originalUserName: originalPostDoc.userName || "Unknown",
+      originalUserHandle: originalPostDoc.userHandle,
       algorithmScore: 10,
     };
 
