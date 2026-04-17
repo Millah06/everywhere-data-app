@@ -5,5 +5,7 @@
 
 */
 -- AlterTable
-ALTER TABLE "Post" ADD COLUMN     "originalUserHandle" TEXT,
-ADD COLUMN     "userHandle" TEXT NOT NULL;
+ALTER TABLE "Post" 
+ADD COLUMN     "originalUserHandle" TEXT;
+ALTER TABLE "Post" 
+ADD COLUMN     "userHandle" TEXT;
