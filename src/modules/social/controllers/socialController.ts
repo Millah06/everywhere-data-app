@@ -133,6 +133,7 @@ const getComments = async (req: any, res: any) => {
   try {
     const { postId } = req.params;
     const { limit = 20, cursor } = req.query;
+     const limitNum = Math.min(parseInt(limit as string), 50);
 
     const comments = await prisma.postComment.findMany({
       where: { postId },
@@ -148,6 +149,7 @@ const getComments = async (req: any, res: any) => {
       success: true,
       comments,
       nextCursor: comments.length ? comments[comments.length - 1].id : null,
+      hasMore: comments.length === limitNum,
     });
   } catch (error) {
     console.error("Get comments error:", error);
