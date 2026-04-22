@@ -80,51 +80,51 @@ const uploadCacCertificate = async (req: any, res: any) => {
   }
 };
 
+// Your simple upload function - JUST LIKE YOUR createPost!
 const uploadMenuItemImages = async (req: any, res: any) => {
   try {
-
+    // Check auth first (just like your createPost)
     const userId = req.user?.id;
+    
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
 
-    const { itemId } = req.params;
-
-    if (!req.files || req.files.length === 0) {
+    // Check if file exists (multer adds it to req.file)
+     if (!req.files || req.files.length === 0) {
       return res.status(400).json({ error: "No images added." });
     }
 
-    const item = await prisma.menuItem.findUnique({
-      where: { id: itemId },
-      include: { branch: { include: { vendor: true } } },
-    });
-    if (!item) return res.status(404).json({ message: "Menu item not found" });
-    if (item.branch.vendor.ownerId !== userId && item.branch.managerId !== userId)
-      return res.status(403).json({ message: "Unauthorized" });
-
+    let imageUrls: string[] = [];
+    
     if (req.files.length > 1) {
-      const imageUrls = await uploadMultipleImages(
+      imageUrls = await uploadMultipleImages(
         req.files,
         userId,
-        'menuItem',
+        'post',
       );
 
-       await prisma.menuItem.update({ where: { id: itemId }, data: { images: imageUrls } });
+       
     } else {
       const imageUrl = await uploadImage(
         req.files[0],
         userId,
-        'menuItem',
+        'post',
       );
-      await prisma.menuItem.update({ where: { id: itemId }, data: { images: [imageUrl] } });
+      imageUrls = [imageUrl];
     }
     
-     res.json({ success: true, message: "Menu item images uploaded successfully" });
-
-  } catch (e: any) {
-    console.error("Error uploading menu item images:", e.message);
-    res
-      .status(500)
-      .json({
-        error: `An error occurred while uploading menu item images. ${e.message}`,
-      });
+    res.status(200).json({
+      success: true,
+      urls: imageUrls, // Same format as your Firebase function returned
+      message: "Image uploaded successfully",
+    });
+  } catch (error) {
+    console.error("Upload error:", error);
+    res.status(500).json({
+      error: "Failed to upload image",
+      details: error instanceof Error ? error.message : "Unknown error",
+    });
   }
 };
 
