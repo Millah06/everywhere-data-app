@@ -101,7 +101,7 @@ const uploadMenuItemImages = async (req: any, res: any) => {
       imageUrls = await uploadMultipleImages(
         req.files,
         userId,
-        'post',
+        'menuItems',
       );
 
        
@@ -109,7 +109,7 @@ const uploadMenuItemImages = async (req: any, res: any) => {
       const imageUrl = await uploadImage(
         req.files[0],
         userId,
-        'post',
+        'menuItems',
       );
       imageUrls = [imageUrl];
     }

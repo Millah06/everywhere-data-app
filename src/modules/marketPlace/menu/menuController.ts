@@ -5,7 +5,7 @@ const addMenuItem = async (req: any, res: any) => {
     const userId = req.user?.id;
 
     const { branchId } = req.params;
-    const { name, description, price, isAvailable } = req.body;
+    const { name, description, price, isAvailable, imageUrls } = req.body;
 
     const branch = await prisma.branch.findUnique({
       where: { id: branchId },
@@ -22,6 +22,7 @@ const addMenuItem = async (req: any, res: any) => {
         description,
         price,
         isAvailable: isAvailable !== undefined ? isAvailable : true,
+        ...(imageUrls !== undefined && { images: imageUrls }),
       },
     });
 
@@ -36,7 +37,7 @@ const updateMenuItem = async (req: any, res: any) => {
     const userId = req.user?.id;
 
     const { itemId } = req.params;
-    const { name, description, price, isAvailable } = req.body;
+    const { name, description, price, isAvailable, imageUrls} = req.body;
 
     const item = await prisma.menuItem.findUnique({
       where: { id: itemId },
@@ -55,6 +56,7 @@ const updateMenuItem = async (req: any, res: any) => {
         ...(description !== undefined && { description }),
         ...(price !== undefined && { price }),
         ...(isAvailable !== undefined && { isAvailable }),
+         ...(imageUrls !== undefined && { images: imageUrls }),
       },
     });
 
