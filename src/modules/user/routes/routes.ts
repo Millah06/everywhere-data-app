@@ -5,6 +5,7 @@ import searchUsersController from "../controllers/searchUser.controller";
 import updateMeController from "../controllers/updateMe.controller";
 import updateProfileController from "../controllers/updateProfile.controller";
 import multer from "multer";
+import checkUserHandleController from "../controllers/checkUserHandle";
 
 
 const  upload = multer({ storage: multer.memoryStorage(), 
@@ -56,6 +57,12 @@ router.post(
   "/users/me/toggle-allow-messages",
   authMiddleware,
   updateProfileController.toggleAllowFollowersToMessage
+);
+
+router.get(
+  "/users/check-handle/:userHandle",
+  authMiddleware,
+  checkUserHandleController.checkUserHandle,
 );
 
 export default router;

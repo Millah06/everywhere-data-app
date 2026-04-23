@@ -94,9 +94,11 @@ const updateProfile = async (req: any, res: any) => {
 
     const { description, phone, email } = req.body;
 
+
     const vendor = await prisma.vendor.findFirst({
       where: { ownerId: userId },
     });
+ 
     if (!vendor) return res.status(404).json({ message: "Vendor not found" });
 
     const updated = await prisma.vendor.update({

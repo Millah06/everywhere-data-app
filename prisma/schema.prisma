@@ -99,7 +99,6 @@ model User {
   orders         Order[]
   userProfile    UserProfile?
   transactions   Transaction[]
-  reviews        Review[]
   notifications  Notification[]
 
   vendor         Vendor[]
@@ -122,7 +121,7 @@ model User {
 model UserProfile {
   id                     String   @id @default(uuid())
   userId                 String   @unique
-  userName               String?
+  userName               String?  @unique
   bio                    String   @default("")
   location               String?
   website                String?
@@ -566,13 +565,12 @@ model Escrow {
 model Review {
   id        String   @id @default(uuid())
   vendorId  String
-  userId    String // Firebase UID
+  userName  String   @default("Customer")
   rating    Float // 1-5
   comment   String
   createdAt DateTime @default(now())
 
   vendor Vendor @relation(fields: [vendorId], references: [id])
-  user   User   @relation(fields: [userId], references: [id])
 }
 
 model AppConfig {

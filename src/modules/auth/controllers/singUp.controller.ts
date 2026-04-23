@@ -4,6 +4,7 @@ import { prisma } from "../../../prisma";
 import { generateReferralCode } from "../../../shared/utils/generateRefferalCode";
  
 import { generate11DigitId } from "../../../transferUid";
+import {nanoid} from 'nanoid';
 
 /**
  * POST /auth/register
@@ -62,7 +63,11 @@ export const register = async (req: any, res: any) => {
         },
         // Create bare user profile
         userProfile: {
-          create: {},
+          create: {
+            data: {
+              userName: `user_${nanoid(8)}`
+            }
+          },
         },
       }, 
       select: {

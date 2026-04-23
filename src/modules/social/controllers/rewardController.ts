@@ -237,16 +237,16 @@ const convertRewardPoints = async (req: any, res: any) => {
 
     const stats = statsDoc.data();
 
-    if (!stats?.isKycVerified) {
-      return res.status(403).json({
-        error: "KYC verification required to convert reward points",
-      });
-    }
+    // if (!stats?.isKycVerified) {
+    //   return res.status(403).json({
+    //     error: "KYC verification required to convert reward points",
+    //   });
+    // }
 
-    if (stats.totalRewardPoints < amount) {
+    if (stats?.totalRewardPoints < amount) {
       return res.status(400).json({
         error: "Insufficient reward points",
-        available: stats.totalRewardPoints,
+        available: stats?.totalRewardPoints,
       });
     }
 
@@ -260,7 +260,7 @@ const convertRewardPoints = async (req: any, res: any) => {
       });
 
       // Credit wallet
-      await creditWallet(userId, amount);
+      await creditWallet(req.user.id, amount);
 
       // Log transaction
       const transactionRef = db.collection("rewardTransactions").doc();
