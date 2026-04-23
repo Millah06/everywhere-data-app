@@ -244,6 +244,7 @@ const getForYouFeed = async (req: any, res: any) => {
       posts,
       hasMore: posts.length === limitNum,
     });
+
   } catch (error: any) {
     console.error("❌ Get For You feed error:", error);
     res
@@ -566,7 +567,19 @@ const getUserPosts = async (req: any, res: any) => {
   }
 };
 
-// Update createPost to extract hashtags
+const getTopBadge = (badges: {
+  premiumPaid: boolean;
+  business: boolean;
+  kycBlue: boolean;
+  creatorEarnings: boolean;
+}) => {
+  if (badges.premiumPaid) return 'premiumPaid';
+  if (badges.business) return 'business';
+  if (badges.kycBlue) return 'kycBlue';
+  if (badges.creatorEarnings) return 'creatorEarnings';
+  return null;
+};
+
 const createPost = async (req: any, res: any) => {
   try {
     const userId = req.user?.id;
@@ -602,14 +615,19 @@ const createPost = async (req: any, res: any) => {
           select: {
             userName: true,
           },
+
         },
+        badges: true
       },
     });
 
+    const topBadge = user?.badges ? getTopBadge(user.badges) : null;
+  
     const postData = {
       userId,
       userName: user?.name || "Anonymous",
       userHandle: user?.userProfile?.userName || '',
+      topBadge,
       userAvatar: userDoc?.avatarUrl || null,
       title: title?.trim() || null,
       text: text.trim(),

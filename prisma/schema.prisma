@@ -256,6 +256,7 @@ model Post {
   userId             String
   userName           String    @default("Anonymous")
   userHandle         String?   
+  topBadge           String?
   userAvatar         String?
   title              String?
   text               String    @default("")
@@ -588,7 +589,6 @@ model AppConfig {
   bonusElectric         Float  @default(0)
 }
 
-// Location hierarchy — seeded from your location data
 model LocationState {
   id   String @id @default(uuid())
   name String @unique
