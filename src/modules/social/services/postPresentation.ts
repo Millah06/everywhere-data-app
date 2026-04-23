@@ -10,6 +10,7 @@ export function postToClientShape(
     userId: p.userId,
     userName: p.userName,
     userHandle : p.userHandle,
+    topBadge : p.topBadge,
     userAvatar: p.userAvatar,
     title: p.title,
     text: p.text,
