@@ -133,7 +133,7 @@ const getComments = async (req: any, res: any) => {
   try {
     const { postId } = req.params;
     const { limit = 20, cursor } = req.query;
-     const limitNum = Math.min(parseInt(limit as string), 50);
+    const limitNum = Math.min(parseInt(limit as string), 50);
 
     const comments = await prisma.postComment.findMany({
       where: { postId },
@@ -226,25 +226,38 @@ const getForYouFeed = async (req: any, res: any) => {
 
     console.log("✅ Found", rows.length, "posts");
 
-    const posts = rows.map((doc: any) => {
-      let isFollowing = false;
-      if (userId && doc.userId !== userId) {
-        isFollowing = user.following.some((f) => f.followingId === doc.userId);
-      }
+    const posts = await Promise.all(
+      rows.map(async (doc: any) => {
+        let isFollowing = false;
+        if (userId && doc.userId !== userId) {
+          isFollowing = user.following.some(
+            (f) => f.followingId === doc.userId,
+          );
+        }
 
-      return postToClientShape({
-        ...doc,
-        isFollowing,
-        repostCount: doc._count.reposts || 0,
-      });
-    });
+        let isLiked = false;
 
+        const like = await prisma.postLike.findUnique({
+          where: {
+            postId_userId: { postId: doc.id, userId: userId },
+          },
+        });
+        isLiked = !!like;
+
+        return postToClientShape({
+          ...doc,
+          isFollowing,
+          repostCount: doc._count.reposts || 0,
+          isLikedByCurrentUser: isLiked,
+        });
+      }),
+    );
+    
     res.json({
       success: true,
       posts,
       hasMore: posts.length === limitNum,
     });
-
   } catch (error: any) {
     console.error("❌ Get For You feed error:", error);
     res
@@ -292,13 +305,25 @@ const getFollowingFeed = async (req: any, res: any) => {
 
     const rows = await prisma.post.findMany(queryOptions);
 
-    const posts = rows.map((doc: any) => ({
-      ...postToClientShape({
-        ...doc,
-        isFollowing: true,
-        repostCount: doc._count.reposts,
+    const posts = await Promise.all(
+      rows.map(async (doc: any) => {
+        let isLiked = false;
+
+        const like = await prisma.postLike.findUnique({
+          where: {
+            postId_userId: { postId: doc.id, userId: userId },
+          },
+        });
+        isLiked = !!like;
+
+        return postToClientShape({
+          ...doc,
+          isFollowing: true,
+          repostCount: doc._count.reposts,
+          isLikedByCurrentUser: isLiked,
+        });
       }),
-    }));
+    );
 
     res.json({
       success: true,
@@ -573,10 +598,10 @@ const getTopBadge = (badges: {
   kycBlue: boolean;
   creatorEarnings: boolean;
 }) => {
-  if (badges.premiumPaid) return 'premiumPaid';
-  if (badges.business) return 'business';
-  if (badges.kycBlue) return 'kycBlue';
-  if (badges.creatorEarnings) return 'creatorEarnings';
+  if (badges.premiumPaid) return "premiumPaid";
+  if (badges.business) return "business";
+  if (badges.kycBlue) return "kycBlue";
+  if (badges.creatorEarnings) return "creatorEarnings";
   return null;
 };
 
@@ -615,18 +640,17 @@ const createPost = async (req: any, res: any) => {
           select: {
             userName: true,
           },
-
         },
-        badges: true
+        badges: true,
       },
     });
 
     const topBadge = user?.badges ? getTopBadge(user.badges) : null;
-  
+
     const postData = {
       userId,
       userName: user?.name || "Anonymous",
-      userHandle: user?.userProfile?.userName || '',
+      userHandle: user?.userProfile?.userName || "",
       topBadge,
       userAvatar: userDoc?.avatarUrl || null,
       title: title?.trim() || null,
