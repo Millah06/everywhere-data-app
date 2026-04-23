@@ -565,6 +565,7 @@ model Escrow {
 model Review {
   id        String   @id @default(uuid())
   vendorId  String
+  userId    String
   userName  String   @default("Customer")
   rating    Float // 1-5
   comment   String

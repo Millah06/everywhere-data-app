@@ -368,7 +368,7 @@ const addReview = async (req: any, res: any) => {
     const userId = req.user?.id;
 
     const { id: vendorId } = req.params;
-    const { rating, comment } = req.body;
+    const { rating, comment, userName } = req.body;
 
     if (rating < 1 || rating > 5)
       return res
@@ -392,7 +392,7 @@ const addReview = async (req: any, res: any) => {
         .json({ message: "You have already reviewed this vendor" });
 
     const review = await prisma.review.create({
-      data: { vendorId, userId, rating, comment },
+      data: { vendorId , userId, rating, comment, userName: userName  },
     });
 
     const allReviews = await prisma.review.findMany({ where: { vendorId } });
