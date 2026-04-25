@@ -57,6 +57,7 @@ const placeOrder = async (req: any, res: any) => {
       where: { id: branchId },
       include: { vendor: true, deliveryZones: true },
     });
+
     if (!branch) return res.status(404).json({ message: "Branch not found" });
     if (branch.vendorId !== vendorId)
       return res
@@ -373,7 +374,11 @@ const appealOrder = async (req: any, res: any) => {
 
     const updated = await prisma.order.update({
       where: { id: orderId },
-      data: { status: "appealed", escrowStatus: "appealed", appealedBy: userId },
+      data: {
+        status: "appealed",
+        escrowStatus: "appealed",
+        appealedBy: userId,
+      },
       include: { items: true },
     });
 
@@ -477,7 +482,7 @@ const updateOrderStatus = async (req: any, res: any) => {
     if (status === "cancelled") {
       await prisma.escrow.update({
         where: { orderId },
-        data: { releaseStatus: "refunded", refundedAt: new Date(),},
+        data: { releaseStatus: "refunded", refundedAt: new Date() },
       });
 
       updated = await prisma.order.update({
@@ -546,10 +551,18 @@ const cancelAppeal = async (req: any, res: any) => {
     const hours = config?.autoReleaseHours ?? 24;
     const autoReleaseAt = new Date(Date.now() + hours * 60 * 60 * 1000);
 
-    await prisma.order.update({
-      where: { id: orderId },
-      data: { status: "delivered" },
-    });
+    if (order.paymentMethod == "pay_on_delivery") {
+      await prisma.order.update({
+        where: { id: orderId },
+        data: { status: "delivered" },
+      });
+    } else {
+      await prisma.order.update({
+        where: { id: orderId },
+        data: { status: "delivered", escrowStatus: "held" },
+      });
+    }
+
     await prisma.escrow.update({
       where: { orderId },
       data: { releaseStatus: "held", autoReleaseAt },
@@ -722,9 +735,6 @@ const confirmPodReceived = async (req: any, res: any) => {
     res.status(401).json({ message: e.message });
   }
 };
-
-
-
 
 export default {
   placeOrder,

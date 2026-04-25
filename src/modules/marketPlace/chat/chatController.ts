@@ -24,8 +24,9 @@ const sendMessage = async (req: any, res: any) => {
     if (!order) return res.status(404).json({ message: "Order not found" });
 
     const vendor = await prisma.vendor.findFirst({
-      where: { id: order.vendorId, ownerId: userId },
+      where: { id: order.vendorId},
     });
+    
     const isBuyer = order.userId === userId;
     const isVendor = !!vendor;
 
