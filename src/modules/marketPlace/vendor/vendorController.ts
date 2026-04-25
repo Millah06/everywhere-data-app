@@ -368,7 +368,7 @@ const addReview = async (req: any, res: any) => {
     const userId = req.user?.id;
 
     const { id: vendorId } = req.params;
-    const { rating, comment, userName } = req.body;
+    const { rating, comment, userName, orderId } = req.body;
 
     if (rating < 1 || rating > 5)
       return res
@@ -384,12 +384,12 @@ const addReview = async (req: any, res: any) => {
         .json({ message: "You must complete an order before reviewing" });
 
     const alreadyReviewed = await prisma.review.findFirst({
-      where: { userId, vendorId },
+      where: { userId, orderId },
     });
     if (alreadyReviewed)
       return res
         .status(400)
-        .json({ message: "You have already reviewed this vendor" });
+        .json({ message: "You have already reviewed this order" });
 
     const review = await prisma.review.create({
       data: { vendorId , userId, rating, comment, userName: userName  },
