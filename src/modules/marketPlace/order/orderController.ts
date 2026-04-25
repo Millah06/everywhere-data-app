@@ -491,6 +491,22 @@ const updateOrderStatus = async (req: any, res: any) => {
         include: { items: true },
       });
 
+      // After: updated = await prisma.order.update({ where: { id: orderId }, data: { status }, ... });
+      const db = admin.firestore();
+      const now = admin.firestore.FieldValue.serverTimestamp();
+      await db
+        .doc(`orderPings/${order.userId}`)
+        .set({ updatedAt: now }, { merge: true });
+      // ping the vendor too
+      const pingBranch = await prisma.branch.findUnique({
+        where: { id: order.branchId },
+        select: { managerId: true },
+      });
+      if (pingBranch)
+        await db
+          .doc(`orderPings/${pingBranch.managerId}`)
+          .set({ updatedAt: now }, { merge: true });
+
       await WalletService.moveLockedToAvailableCredit({
         userId: updated.userId,
         amount: order.totalAmount,
@@ -567,6 +583,22 @@ const cancelAppeal = async (req: any, res: any) => {
       where: { orderId },
       data: { releaseStatus: "held", autoReleaseAt },
     });
+
+    // After: updated = await prisma.order.update({ where: { id: orderId }, data: { status }, ... });
+    const db = admin.firestore();
+    const now = admin.firestore.FieldValue.serverTimestamp();
+    await db
+      .doc(`orderPings/${order.userId}`)
+      .set({ updatedAt: now }, { merge: true });
+    // ping the vendor too
+    const pingBranch = await prisma.branch.findUnique({
+      where: { id: order.branchId },
+      select: { managerId: true },
+    });
+    if (pingBranch)
+      await db
+        .doc(`orderPings/${pingBranch.managerId}`)
+        .set({ updatedAt: now }, { merge: true });
 
     res.json({ message: "Appeal cancelled. Escrow timer restored." });
   } catch (e: any) {
@@ -689,6 +721,22 @@ const concedeAppeal = async (req: any, res: any) => {
         );
     }
 
+    // After: updated = await prisma.order.update({ where: { id: orderId }, data: { status }, ... });
+    const db = admin.firestore();
+    const now = admin.firestore.FieldValue.serverTimestamp();
+    await db
+      .doc(`orderPings/${order.userId}`)
+      .set({ updatedAt: now }, { merge: true });
+    // ping the vendor too
+    const pingBranch = await prisma.branch.findUnique({
+      where: { id: order.branchId },
+      select: { managerId: true },
+    });
+    if (pingBranch)
+      await db
+        .doc(`orderPings/${pingBranch.managerId}`)
+        .set({ updatedAt: now }, { merge: true });
+
     res.json({ message: "Appeal conceded successfully" });
   } catch (e: any) {
     res.status(500).json({ message: e.message });
@@ -727,6 +775,22 @@ const confirmPodReceived = async (req: any, res: any) => {
       commission,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
+
+    // After: updated = await prisma.order.update({ where: { id: orderId }, data: { status }, ... });
+    const db = admin.firestore();
+    const now = admin.firestore.FieldValue.serverTimestamp();
+    await db
+      .doc(`orderPings/${order.userId}`)
+      .set({ updatedAt: now }, { merge: true });
+    // ping the vendor too
+    const pingBranch = await prisma.branch.findUnique({
+      where: { id: order.branchId },
+      select: { managerId: true },
+    });
+    if (pingBranch)
+      await db
+        .doc(`orderPings/${pingBranch.managerId}`)
+        .set({ updatedAt: now }, { merge: true });
 
     res.json({
       message: "POD confirmed. Commission due: ₦" + commission.toFixed(2),
