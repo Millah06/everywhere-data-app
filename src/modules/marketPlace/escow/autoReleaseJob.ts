@@ -99,7 +99,7 @@ export const runAutoCancelJob = async () => {
   for (const order of stale) {
     const updated = await prisma.order.updateMany({
       where: { id: order.id },
-      data: { status: "cancelled", escrowStatus: "released" },
+      data: { status: "cancelled", escrowStatus: "cancelled" },
     });
 
     if (updated.count === 0) continue;
