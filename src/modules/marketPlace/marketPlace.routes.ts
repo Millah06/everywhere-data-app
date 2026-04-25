@@ -28,6 +28,7 @@ router.put("/vendor/visibility", authMiddleware, vendorController.toggleVisibili
 router.put("/vendor/pod-toggle", vendorController.togglePodAcceptance); // simple toggle like visibility
 router.put("/vendor/profile", authMiddleware, vendorController.updateProfile);
 router.post("/vendor/:id/review", authMiddleware, vendorController.addReview);
+router.get("/vendor/:id/reviews", authMiddleware, vendorController.getReviews);
 router.post("/vendor/upload/logo", upload.single("image"), uploadController.uploadVendorLogo);
 router.post("/vendor/upload/coverPhoto", upload.single("image"), uploadController.uploadVendorCoverImage);
 router.post("/vendor/upload/cac", authMiddleware, upload.single("image"), uploadController.uploadCacCertificate);
@@ -63,6 +64,7 @@ router.get("/order/:orderId", authMiddleware, orderController.getOrderById);
 router.post("/order/:orderId/confirm", authMiddleware, orderController.confirmDelivery);
 router.post("/order/:orderId/appeal", authMiddleware, orderController.appealOrder);
 router.post("/order/:orderId/cancel-appeal", authMiddleware, orderController.cancelAppeal);
+router.post("/order/:orderId/concede-appeal", authMiddleware, orderController.concedeAppeal);
 router.put("/order/:orderId/status", authMiddleware, orderController.updateOrderStatus);
 router.post("/order/:orderId/pod-confirm", authMiddleware, orderController.confirmPodReceived);
 

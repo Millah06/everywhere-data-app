@@ -504,6 +504,7 @@ model Order {
   totalAmount    Float
   status         OrderStatus  @default(pending)
   escrowStatus   EscrowStatus @default(held)
+  appealedBy     String? // userId of whoever filed the appeal
 
   // existing...
   paymentMethod String  @default("escrow") // "escrow" | "pay_on_delivery"
@@ -587,6 +588,8 @@ model AppConfig {
   bonusData             Float  @default(0)
   bonusCable            Float  @default(0)
   bonusElectric         Float  @default(0)
+
+  autoCancelMinutes Int @default(30)
 }
 
 model LocationState {

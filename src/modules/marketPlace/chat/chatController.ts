@@ -7,13 +7,15 @@ const phonePattern = /(\+?\d[\d\s\-]{8,}\d)/;
 const sendMessage = async (req: any, res: any) => {
   try {
     const userId = req.user?.id;
-
     const { orderId } = req.params;
-    const { message } = req.body;
+    const { message, imageUrl } = req.body; // imageUrl is optional
 
-    if (!message || message.trim() === "")
-      return res.status(400).json({ message: "Message cannot be empty" });
-    if (phonePattern.test(message))
+    if ((!message || message.trim() === "") && !imageUrl)
+      return res
+        .status(400)
+        .json({ message: "Message or image is required" });
+
+    if (message && phonePattern.test(message))
       return res
         .status(400)
         .json({ message: "Phone numbers are not allowed in chat" });
@@ -49,20 +51,20 @@ const sendMessage = async (req: any, res: any) => {
       .collection("messages")
       .add({
         senderId: userId,
-        senderName: (isVendor ? vendor!.name : "Customer"),
-        message: message.trim(),
+        senderName: isVendor ? vendor!.name : "Customer",
+        message: message?.trim() ?? "",
+        imageUrl: imageUrl ?? null,
         isAdmin: false,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
-    res
-      .status(201)
-      .json({
-        id: msgRef.id,
-        orderId,
-        senderId: userId,
-        message: message.trim(),
-      });
+    res.status(201).json({
+      id: msgRef.id,
+      orderId,
+      senderId: userId,
+      message: message?.trim() ?? "",
+      imageUrl: imageUrl ?? null,
+    });
   } catch (e: any) {
     res.status(401).json({ message: e.message });
   }

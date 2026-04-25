@@ -83,7 +83,7 @@ const rewardPost = async (req: any, res: any) => {
     await db.runTransaction(async (transaction) => {
       // Deduct from wallet BEFORE transaction
       console.log("Deducting from wallet...");
-      await deductWallet(senderId, amount);
+      await deductWallet(req.user.id, amount);
       console.log("Wallet deducted successfully");
 
       const statsRef = db.collection("creatorStats").doc(creatorId);

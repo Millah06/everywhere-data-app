@@ -373,7 +373,7 @@ const appealOrder = async (req: any, res: any) => {
 
     const updated = await prisma.order.update({
       where: { id: orderId },
-      data: { status: "appealed", escrowStatus: "appealed" },
+      data: { status: "appealed", escrowStatus: "appealed", appealedBy: userId },
       include: { items: true },
     });
 
@@ -561,6 +561,127 @@ const cancelAppeal = async (req: any, res: any) => {
   }
 };
 
+const concedeAppeal = async (req: any, res: any) => {
+  try {
+    const userId = req.user?.id;
+    const { orderId } = req.params;
+
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: { branch: true },
+    });
+    if (!order) return res.status(404).json({ message: "Order not found" });
+    if (order.status !== "appealed")
+      return res.status(400).json({ message: "Order is not under appeal" });
+
+    const isBuyer = order.userId === userId;
+    const isManager = order.branch.managerId === userId;
+    if (!isBuyer && !isManager)
+      return res.status(403).json({ message: "Unauthorized" });
+
+    if (order.appealedBy === userId)
+      return res
+        .status(400)
+        .json({ message: "You cannot concede your own appeal" });
+
+    const buyerAppealed = order.appealedBy === order.userId;
+
+    if (buyerAppealed) {
+      // Vendor concedes → buyer wins → refund
+      await prisma.order.update({
+        where: { id: orderId },
+        data: { status: "cancelled", escrowStatus: "refunded" },
+      });
+      await prisma.escrow.update({
+        where: { orderId },
+        data: { releaseStatus: "refunded", refundedAt: new Date() },
+      });
+      await WalletService.moveLockedToAvailableCredit({
+        userId: order.userId,
+        amount: order.totalAmount,
+      });
+      await WalletService.createCreditTransaction({
+        userId: order.userId,
+        amount: order.totalAmount,
+        type: TX_TYPE.ORDER_REFUND,
+        metaData: { orderId, vendorId: order.vendorId },
+      });
+    } else {
+      // Buyer concedes → vendor wins → release
+      const vendor = await prisma.vendor.findUnique({
+        where: { id: order.vendorId },
+        include: { user: true },
+      });
+      await prisma.order.update({
+        where: { id: orderId },
+        data: { status: "completed", escrowStatus: "released" },
+      });
+      await prisma.escrow.update({
+        where: { orderId },
+        data: { releaseStatus: "released", releasedAt: new Date() },
+      });
+      await WalletService.creditAvailableBalance({
+        userId: vendor!.ownerId,
+        amount: order.totalAmount,
+      });
+      await WalletService.createCreditTransaction({
+        userId: vendor!.ownerId,
+        amount: order.totalAmount,
+        type: TX_TYPE.ORDER_PAYMENT,
+        metaData: { orderId, vendorId: vendor!.id },
+      });
+      await WalletService.releaseEscow({
+        userId: order.userId,
+        amount: order.totalAmount,
+        orderId: order.id,
+      });
+      await recalculateVendorMetrics(order.vendorId);
+    }
+
+    // Notifications
+    const buyer = await prisma.user.findUnique({
+      where: { id: order.userId },
+      select: { notificationToken: true },
+    });
+    const vendor = await prisma.vendor.findUnique({
+      where: { id: order.vendorId },
+      include: { user: { select: { notificationToken: true } } },
+    });
+
+    if (buyerAppealed) {
+      if (buyer?.notificationToken)
+        await notify(
+          buyer.notificationToken,
+          "Appeal Accepted",
+          "Your appeal was accepted. Your funds have been refunded.",
+        );
+      if (vendor?.user.notificationToken)
+        await notify(
+          vendor.user.notificationToken,
+          "Appeal Conceded",
+          "You accepted the buyer's appeal. Funds have been refunded.",
+        );
+    } else {
+      if (buyer?.notificationToken)
+        await notify(
+          buyer.notificationToken,
+          "Appeal Conceded",
+          "You accepted the vendor's appeal. Payment has been released.",
+        );
+      if (vendor?.user.notificationToken)
+        await notify(
+          vendor.user.notificationToken,
+          "Appeal Resolved",
+          "The buyer accepted your appeal. Payment released to your wallet.",
+        );
+    }
+
+    res.json({ message: "Appeal conceded successfully" });
+  } catch (e: any) {
+    res.status(500).json({ message: e.message });
+  }
+};
+
 const confirmPodReceived = async (req: any, res: any) => {
   try {
     const userId = req.user?.id;
@@ -602,6 +723,9 @@ const confirmPodReceived = async (req: any, res: any) => {
   }
 };
 
+
+
+
 export default {
   placeOrder,
   getMyOrders,
@@ -611,5 +735,6 @@ export default {
   getManagerOrders,
   updateOrderStatus,
   cancelAppeal,
+  concedeAppeal,
   confirmPodReceived,
 };

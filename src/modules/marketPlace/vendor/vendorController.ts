@@ -411,6 +411,21 @@ const addReview = async (req: any, res: any) => {
   }
 };
 
+const getReviews = async (req: any, res: any) => {
+  try {
+    const { id: vendorId } = req.params;
+    const userId = req.user?.id;
+    const reviews = await prisma.review.findMany({
+      where: { vendorId },
+      orderBy: { createdAt: "desc" },
+    });
+    const hasReviewed = reviews.some((r: any) => r.userId === userId);
+    res.json({ reviews, hasReviewed });
+  } catch (e: any) {
+    res.status(500).json({ message: e.message });
+  }
+};
+
 const getAdvancedMetrics = async (req: any, res: any) => {
   try {
     const userId = req.user?.id;
@@ -558,6 +573,7 @@ export default {
   getVendorMetrics,
   toggleVisibility,
   addReview,
+  getReviews,
   updateProfile,
   getAdvancedMetrics,
   togglePodAcceptance,
