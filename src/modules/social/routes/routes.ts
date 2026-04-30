@@ -5,7 +5,7 @@ import badgeController from "../controllers/badgeController";
 import downloadController from "../controllers/downloadController";
 import reportController from "../controllers/reportController";
 import repostController from "../controllers/repostController";
-import rewardController from "../controllers/rewardController";
+// import rewardController from "../controllers/rewardController";
 import socialController from "../controllers/socialController";
 import viewController from "../controllers/viewController";
 import giftController from '../controllers/giftController';
@@ -34,10 +34,10 @@ router.post('/social/likes/check', authMiddleware, socialController.checkLikeSta
 router.delete('/social/posts/:postId', authMiddleware, socialController.deletePost);
 
 // Reward routes
-router.post('/rewards/reward', authMiddleware, rewardController.rewardPost);
-router.post('/rewards/convert', authMiddleware, rewardController.convertRewardPoints);
-router.post('/rewards/boost', authMiddleware, rewardController.boostPost);
-router.get('/rewards/stats', authMiddleware, rewardController.getCreatorStats);
+// router.post('/rewards/reward', authMiddleware, rewardController.rewardPost);
+// router.post('/rewards/convert', authMiddleware, rewardController.convertRewardPoints);
+// router.post('/rewards/boost', authMiddleware, rewardController.boostPost);
+// router.get('/rewards/stats', authMiddleware, rewardController.getCreatorStats);
 
 // Add these new routes to your existing index.ts
 
