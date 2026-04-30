@@ -95,6 +95,8 @@ model User {
 
   kyc            Kyc?
   badges         Badges?
+  coins            UserCoins?
+  creatorStats     CreatorStats?
   virtualAccount VirtualAccount[]
   wallet         Wallet?
   orders         Order[]
@@ -113,6 +115,10 @@ model User {
   postViewTrackers  PostViewTracker[] @relation("PostViews")
   followers         Follow[] @relation("Following")
   following         Follow[] @relation("Follower")
+  
+  sentGifts        GiftTransaction[] @relation("GiftSender")
+  receivedGifts    GiftTransaction[] @relation("GiftReceiver")
+  coinConversions  CoinConversion[]  @relation("CoinConversions")
 
   @@index([firebaseUid, createdAt])
   @@index([email])
@@ -265,8 +271,11 @@ model Post {
   hashtags           String[]
   likeCount          Int       @default(0)
   commentCount       Int       @default(0)
-  rewardCount        Int       @default(0)
-  rewardPointsTotal  Float     @default(0)
+
+  // ADD:
+  giftCount     Int       @default(0)  // Total gifts received
+  coinTotal     Int       @default(0)  // Total coins from gifts
+  
   viewCount          Int       @default(0)
   isBoosted          Boolean   @default(false)
   boostExpiresAt     DateTime?
@@ -625,4 +634,87 @@ model LocationStreet {
   areaId String
 
   area LocationArea @relation(fields: [areaId], references: [id])
+}
+
+// schema.prisma - ADD THESE MODELS
+
+// ── COIN SYSTEM ──────────────────────────────────────────────────────────────
+
+model UserCoins {
+  id           String   @id @default(uuid())
+  userId       String   @unique
+  balance      Int      @default(0) // Total coins available
+  totalEarned  Int      @default(0) // Lifetime coins earned (creators)
+  totalSpent   Int      @default(0) // Lifetime coins spent (gifters)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model GiftTransaction {
+  id              String   @id @default(uuid())
+  senderId        String
+  receiverId      String
+  postId          String
+  giftType        String   // "rose" | "coffee" | "fire" | "diamond" | "rocket" | "crown"
+  coinAmount      Int      // Coins sent
+  nairaEquivalent Float    // Money deducted (coinAmount / 10)
+  platformFee     Float    // 5% of nairaEquivalent
+  coinsAwarded    Int      // Coins creator receives (after fee)
+  status          String   @default("completed")
+  createdAt       DateTime @default(now())
+
+  sender   User @relation("GiftSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver User @relation("GiftReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@index([senderId, createdAt])
+  @@index([receiverId, createdAt])
+  @@index([postId])
+}
+
+model CoinConversion {
+  id            String   @id @default(uuid())
+  userId        String
+  coinAmount    Int      // Coins converted
+  nairaAmount   Float    // Money credited to wallet
+  conversionFee Float    @default(0) // Optional fee (0 for now)
+  status        String   @default("completed")
+  createdAt     DateTime @default(now())
+
+  user User @relation("CoinConversions", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+model CreatorStats {
+  id                   String   @id @default(uuid())
+  userId               String   @unique
+  totalCoinsEarned     Int      @default(0)
+  totalNairaEarned     Float    @default(0)
+  totalGiftsReceived   Int      @default(0)
+  weeklyCoins          Int      @default(0)
+  weeklyResetAt        DateTime
+  level                Int      @default(1)
+  isKycVerified        Boolean  @default(false)
+  lastUpdated          DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model UserDailyLimit {
+  id            String   @id @default(uuid())
+  userId        String
+  date          String   // YYYY-MM-DD format
+  totalSpent    Float    @default(0)
+  giftCount     Int      @default(0)
+  lastGiftAt    DateTime
+  createdAt     DateTime @default(now())
+
+  @@unique([userId, date])
+  @@index([userId, date])
 }

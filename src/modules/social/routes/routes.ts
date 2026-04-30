@@ -8,6 +8,7 @@ import repostController from "../controllers/repostController";
 import rewardController from "../controllers/rewardController";
 import socialController from "../controllers/socialController";
 import viewController from "../controllers/viewController";
+import giftController from '../controllers/giftController';
 import multer from "multer";
 
 
@@ -75,5 +76,13 @@ router.post('/social/posts/download', authMiddleware, downloadController.generat
 router.post('/admin/badges/award', authMiddleware, badgeController.awardBadge);
 router.post('/admin/badges/revoke', authMiddleware, badgeController.revokeBadge);
 router.get('/social/users/:userId/badges', badgeController.getUserBadges);
+
+// backend/index.ts - ADD THESE ROUTES
+
+// Gift system routes
+router.post('/gifts/send', authMiddleware, giftController.sendGift);
+router.post('/coins/convert', authMiddleware, giftController.convertCoinsToNaira);
+router.get('/coins/balance', authMiddleware, giftController.getUserCoinBalance);
+router.get('/creator/stats', authMiddleware, giftController.getCreatorStats);
 
 export default router;
