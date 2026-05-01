@@ -24,7 +24,6 @@ router.get('/social/feed', authMiddleware, socialController.getFeed);
 router.post('/social/like', authMiddleware, socialController.likePost);
 router.post('/social/comment', authMiddleware, socialController.commentOnPost);
 router.get('/social/posts/:postId/comments', authMiddleware, socialController.getComments);
-router.get('/social/leaderboard', authMiddleware, socialController.getTopEarners);
 router.post('/social/upload', authMiddleware, upload.array('images', 10), uploadPostImages);
 
 // backend/index.ts - ADD THIS ROUTE
@@ -84,5 +83,6 @@ router.post('/gifts/send', authMiddleware, giftController.sendGift);
 router.post('/coins/convert', authMiddleware, giftController.convertCoinsToNaira);
 router.get('/coins/balance', authMiddleware, giftController.getUserCoinBalance);
 router.get('/creator/stats', authMiddleware, giftController.getCreatorStats);
+router.get('/social/leaderboard', authMiddleware, giftController.getTopEarners);
 
 export default router;

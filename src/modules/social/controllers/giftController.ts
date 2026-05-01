@@ -351,9 +351,44 @@ const getCreatorStats = async (req: any, res: any) => {
   }
 };
 
+const getTopEarners = async (req: any, res: any) => {
+  try {
+    const topCreators = await prisma.creatorStats.findMany({
+      orderBy: { weeklyCoins: 'desc' },
+      take: 10,
+      include: {
+        user: {
+          select: {
+            name: true,
+            userProfile: {
+              select: { avatarUrl: true },
+            },
+          },
+        },
+      },
+    });
+
+    const earners = topCreators.map((stats) => ({
+      userId: stats.userId,
+      userName: stats.user.name,
+      userAvatar: stats.user.userProfile?.avatarUrl,
+      totalCoins: stats.totalCoinsEarned,
+      weeklyCoins: stats.weeklyCoins,
+      totalNaira: stats.totalNairaEarned,
+      level: stats.level,
+    }));
+
+    res.json({ success: true, earners });
+  } catch (error: any) {
+    console.error('Get top earners error:', error);
+    res.status(500).json({ error: 'Failed to fetch leaderboard' });
+  }
+};
+
 export default {
   sendGift,
   convertCoinsToNaira,
   getUserCoinBalance,
   getCreatorStats,
+  getTopEarners, // ADD THIS
 };
