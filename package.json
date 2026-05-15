@@ -19,6 +19,7 @@
     "@prisma/client": "^7.4.2",
     "@types/node-cron": "^3.0.11",
     "axios": "^1.13.5",
+    "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
     "crypto": "^1.0.1",
     "dotenv": "^17.3.1",
