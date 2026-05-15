@@ -18,7 +18,7 @@ const checkUserHandle = async (req: any, res: any) => {
     }
 
     return res.json({
-         available: true,
+        available: true,
         message: 'Handle is available'
     })
 }

@@ -26,6 +26,10 @@ export const login = async (req: any, res: any) => {
         active: true,
         referralCode: true,
         notificationsEnabled: true,
+        // Include region info in the response
+        country: true,
+        currency: true,
+        timezone: true,
         kyc: { select: { status: true } },
         wallet: {
           select: {

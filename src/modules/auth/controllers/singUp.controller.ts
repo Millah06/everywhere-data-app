@@ -5,6 +5,7 @@ import { generateReferralCode } from "../../../shared/utils/generateRefferalCode
  
 import { generate11DigitId } from "../../../transferUid";
 import {nanoid} from 'nanoid';
+import { detectRegion } from '../../../shared/utils/ip-region';
 
 /**
  * POST /auth/register
@@ -13,32 +14,20 @@ import {nanoid} from 'nanoid';
  */
 export const register = async (req: any, res: any) => {
   try {
-    const { name, email, password, phone, referralCode } = req.body;
+    const { name, email, password } = req.body;
 
     if (!name || !email || !password) {
       return res.status(400).json({ message: "name, email and password are required." });
     }
+
+    const region = detectRegion(req);
 
     // 1. Create Firebase user
     const firebaseUser = await getAuth().createUser({
       email,
       password,
       displayName: name,
-      ...(phone ? { phoneNumber: phone } : {}),
     });
-
-    // 2. Validate referral code if provided
-    let referredByCode: string | undefined;
-    if (referralCode) {
-      const referrer = await prisma.user.findUnique({ where: { referralCode } });
-      if (!referrer) {
-        // Don't hard-fail — just ignore invalid referral codes
-        console.warn(`Invalid referral code: ${referralCode}`);
-      } else {
-        referredByCode = referralCode;
-      }
-    }
-
     // 3. Create Postgres user (minimal fields — rest filled later)
     const user = await prisma.user.create({
       data: {
@@ -46,9 +35,12 @@ export const register = async (req: any, res: any) => {
         transferUid: generate11DigitId(),
         name,
         email,
-        phone: phone ?? "",
+        phone: "",
         referralCode: generateReferralCode(),
-        referredBy: referredByCode,
+        referredBy: undefined, // Will be set in a later step if referral code is valid
+        country: region.country,
+        currency: region.currency,
+        timezone: region.timezone,
         // Create wallet and fiat sub-records immediately
         wallet: {
           create: {

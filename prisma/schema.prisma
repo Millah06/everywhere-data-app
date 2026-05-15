@@ -80,7 +80,7 @@ model User {
   firebaseUid          String    @unique
   name                 String
   email                String    @unique
-  phone                String    @default("")
+  phone                String    @default("") 
   role                 role      @default(user)
   active               Boolean   @default(true)
   pin                  String?   // hashed wallet PIN for transaction auth
@@ -92,6 +92,18 @@ model User {
   deletedAt            DateTime? // soft delete
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
+
+  // ─── Global / Region ───────────────────────────────────────────────────────
+  country           String?          // ISO 3166-1 alpha-2, e.g. "NG", "US"
+  currency          String?          // ISO 4217, e.g. "NGN", "USD"
+  timezone          String?          // IANA, e.g. "Africa/Lagos"
+
+  // ─── Transaction PIN (REPLACES SharedPreferences storage) ─────────────────
+  transactionPinHash  String?        // bcrypt hash — NEVER store plaintext
+  
+  // ─── Social Auth ──────────────────────────────────────────────────────────
+  // Optional — track which provider was used for sign-up analytics
+  authProvider      String?          // "email" | "google" | "apple"
 
   kyc            Kyc?
   badges         Badges?
@@ -123,6 +135,7 @@ model User {
   @@index([firebaseUid, createdAt])
   @@index([email])
   @@index([transferUid])
+  @@index([phone])
 }
 
 model UserProfile {
