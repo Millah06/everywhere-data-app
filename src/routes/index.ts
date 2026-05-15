@@ -8,6 +8,7 @@ import userRouter from "../modules/user/routes/routes";
 import authRouter from "../modules/auth/routes/routes";
 import walletRouter from "../modules/wallet/routes/routes";
 import supportChatRouter from "../modules/support/routes/routes";
+import CommunicationRouter from "../modules/communication/routes/routes";
 
 const router = Router();
 
@@ -20,7 +21,7 @@ router.use(userRouter);
 router.use(authRouter);
 router.use(walletRouter);
 router.use(supportChatRouter);
-
+router.use(CommunicationRouter);
 
 
 export default router;
