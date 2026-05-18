@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { uploadPostImages } from "../controllers/uploadPostImage.controller";
-import { authMiddleware } from "../../../middleware/auth";
+import { authMiddleware, optionalAuthMiddleware } from "../../../middleware/auth";
 import badgeController from "../controllers/badgeController";
 import downloadController from "../controllers/downloadController";
 import reportController from "../controllers/reportController";
@@ -41,7 +41,7 @@ router.delete('/social/posts/:postId', authMiddleware, socialController.deletePo
 // Add these new routes to your existing index.ts
 
 // Feed routes
-router.get('/social/feed/foryou', authMiddleware, socialController.getForYouFeed);
+router.get('/social/feed/foryou', optionalAuthMiddleware, socialController.getForYouFeed);
 router.get('/social/feed/following', authMiddleware, socialController.getFollowingFeed);
 router.post('/social/posts/:postId/view', authMiddleware, viewController.incrementView);
 
@@ -83,6 +83,6 @@ router.post('/gifts/send', authMiddleware, giftController.sendGift);
 router.post('/coins/convert', authMiddleware, giftController.convertCoinsToNaira);
 router.get('/coins/balance', authMiddleware, giftController.getUserCoinBalance);
 router.get('/creator/stats', authMiddleware, giftController.getCreatorStats);
-router.get('/social/leaderboard', authMiddleware, giftController.getTopEarners);
+router.get('/social/leaderboard', giftController.getTopEarners);
 
 export default router;

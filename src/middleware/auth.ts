@@ -51,6 +51,58 @@ export const authMiddleware = async (
   }
 };
 
+export const optionalAuthMiddleware = async (
+  req: any,
+  res: any,
+  next: NextFunction,
+) => {
+  try {
+    const token = extractBearerToken(req.headers.authorization);
+
+    // No token = guest mode
+    if (!token) {
+      req.user = null;
+      return next();
+    }
+
+    const decoded = await admin.auth().verifyIdToken(token);
+
+    const dbUser = await prisma.user.findUnique({
+      where: { firebaseUid: decoded.uid },
+      select: { id: true, role: true, active: true, email: true },
+    });
+
+    // Invalid user = guest mode
+    if (!dbUser) {
+      req.user = null;
+      return next();
+    }
+
+    // Suspended users still blocked
+    if (!dbUser.active) {
+      return res
+        .status(403)
+        .json({ message: "Your account has been suspended. Contact support." });
+    }
+
+    req.user = {
+      id: dbUser.id,
+      uid: decoded.uid,
+      email: dbUser.email ?? decoded.email ?? null,
+      role: dbUser.role as AppRole,
+    };
+
+    return next();
+  } catch (error) {
+    console.error("Optional auth middleware error:", error);
+
+    // Invalid token = guest mode
+    req.user = null;
+
+    return next();
+  }
+};
+
 export const requireRole =
   (...roles: AppRole[]) =>
   (req: any, res: any, next: NextFunction) => {

@@ -196,13 +196,21 @@ const getForYouFeed = async (req: any, res: any) => {
     const { limit = 20, lastPostId } = req.query;
     const limitNum = Math.min(parseInt(limit as string), 50);
 
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      include: { following: true },
-    });
+    // const user = await prisma.user.findUnique({
+    //   where: { id: userId },
+    //   include: { following: true },
+    // });
 
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
+    // if (!user) {
+    //   return res.status(404).json({ error: "User not found" });
+    // }
+
+    let user = null;
+    if (userId) {
+      user = await prisma.user.findUnique({
+        where: { id: userId },
+        include: { following: true },
+      });
     }
 
     // Build query with optional cursor
@@ -230,19 +238,28 @@ const getForYouFeed = async (req: any, res: any) => {
       rows.map(async (doc: any) => {
         let isFollowing = false;
         if (userId && doc.userId !== userId) {
-          isFollowing = user.following.some(
-            (f) => f.followingId === doc.userId,
-          );
+          isFollowing =
+            user?.following.some((f) => f.followingId === doc.userId) || false;
         }
 
         let isLiked = false;
 
-        const like = await prisma.postLike.findUnique({
-          where: {
-            postId_userId: { postId: doc.id, userId: userId },
-          },
-        });
-        isLiked = !!like;
+        // const like = await prisma.postLike.findUnique({
+        //   where: {
+        //     postId_userId: { postId: doc.id, userId: userId },
+        //   },
+        // });
+        // isLiked = !!like;
+
+        if (userId) {
+          const like = await prisma.postLike.findUnique({
+            where: {
+              postId_userId: { postId: doc.id, userId: userId },
+            },
+          });
+
+          isLiked = !!like;
+        }
 
         return postToClientShape({
           ...doc,
@@ -252,7 +269,7 @@ const getForYouFeed = async (req: any, res: any) => {
         });
       }),
     );
-    
+
     res.json({
       success: true,
       posts,

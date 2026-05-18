@@ -39,12 +39,12 @@ export const verifyTransactionPin = async (req: any, res: any) => {
     });
 
     if (!user?.transactionPinHash) {
-      return res.status(404).json({ message: 'PIN not set. Please set a transaction PIN.' });
+      return res.status(404).json({ message: 'PIN not set. Please set a transaction PIN.',  code: 'pin_not_set',  });
     }
 
     const isValid = await bcrypt.compare(pin, user.transactionPinHash);
     if (!isValid) {
-      return res.status(401).json({ message: 'Incorrect PIN.' });
+      return res.status(401).json({ message: 'Incorrect PIN.', code: 'incorrect_pin' });
     }
 
     // Issue a short-lived "pin_verified" claim the client attaches to the withdrawal request

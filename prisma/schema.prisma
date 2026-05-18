@@ -105,6 +105,14 @@ model User {
   // Optional — track which provider was used for sign-up analytics
   authProvider      String?          // "email" | "google" | "apple"
 
+   // ─── Transaction PIN reset ────────────────────────────────────────────────
+  pinResetOtpHash   String?    // SHA-256 hash of OTP
+  pinResetOtpExpiry DateTime?
+
+  // ─── Password reset (unauthenticated flow) ────────────────────────────────
+  passwordResetOtpHash   String?
+  passwordResetOtpExpiry DateTime?
+
   kyc            Kyc?
   badges         Badges?
   coins            UserCoins?
