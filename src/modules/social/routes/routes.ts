@@ -20,10 +20,9 @@ const router = Router();
 
 // Social Feed routes
 router.post('/social/posts', authMiddleware, socialController.createPost);
-router.get('/social/feed', authMiddleware, socialController.getFeed);
 router.post('/social/like', authMiddleware, socialController.likePost);
 router.post('/social/comment', authMiddleware, socialController.commentOnPost);
-router.get('/social/posts/:postId/comments', authMiddleware, socialController.getComments);
+router.get('/social/posts/:postId/comments', optionalAuthMiddleware, socialController.getComments);
 router.post('/social/upload', authMiddleware, upload.array('images', 10), uploadPostImages);
 
 // backend/index.ts - ADD THIS ROUTE
@@ -50,8 +49,8 @@ router.post('/social/follow', authMiddleware, socialController.followUser);
 router.post('/social/unfollow', authMiddleware, socialController.unfollowUser);
 
 // Profile routes
-router.get('/social/profile/:userId', authMiddleware, socialController.getUserProfile);
-router.get('/social/profile/:userId/posts', authMiddleware, socialController.getUserPosts);
+router.get('/social/profile/:userId', optionalAuthMiddleware, socialController.getUserProfile);
+router.get('/social/profile/:userId/posts', optionalAuthMiddleware, socialController.getUserPosts);
 // backend/index.ts - ADD THIS ROUTE
 
 router.get('/social/posts/saved', authMiddleware, socialController.getSavedPosts);

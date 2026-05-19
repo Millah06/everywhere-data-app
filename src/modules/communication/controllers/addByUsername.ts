@@ -38,7 +38,7 @@ export const findByUsername = async (req: any, res: any) => {
 
         return res.json({
             user: {
-                uid: user.user.firebaseUid,
+                id: user.id,
                 name: user.user.name,
                 phone: user.user.phone,
                 userName: user.userName,

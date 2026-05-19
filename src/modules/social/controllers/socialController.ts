@@ -8,40 +8,6 @@ import { postToClientShape } from "../services/postPresentation";
 
 const db = admin.firestore();
 
-const getFeed = async (req: any, res: any) => {
-  try {
-    const { limit = 20, lastPostId } = req.query;
-    const limitNum = Math.min(parseInt(limit as string), 50);
-    const now = new Date();
-
-    const rows = await prisma.post.findMany({
-      take: limitNum,
-      ...(lastPostId ? { cursor: { id: lastPostId as string }, skip: 1 } : {}),
-      orderBy: [{ isBoosted: "desc" }, { createdAt: "desc" }],
-    });
-
-    const posts = rows.map((doc) => {
-      let isBoosted = doc.isBoosted;
-      if (isBoosted && doc.boostExpiresAt && now > doc.boostExpiresAt) {
-        isBoosted = false;
-        prisma.post
-          .update({ where: { id: doc.id }, data: { isBoosted: false } })
-          .catch(() => {});
-      }
-      return postToClientShape({ ...doc, isBoosted });
-    });
-
-    res.json({
-      success: true,
-      posts,
-      hasMore: posts.length === limitNum,
-    });
-  } catch (error) {
-    console.error("Get feed error:", error);
-    res.status(500).json({ error: "Failed to fetch feed" });
-  }
-};
-
 const likePost = async (req: any, res: any) => {
   try {
     const userId = req.user?.id;
@@ -458,7 +424,6 @@ const unfollowUser = async (req: any, res: any) => {
   }
 };
 
-// backend/controllers/socialController.ts - UPDATE getUserProfile
 const getUserProfile = async (req: any, res: any) => {
   try {
     const { userId } = req.params;
@@ -475,7 +440,8 @@ const getUserProfile = async (req: any, res: any) => {
       },
     });
 
-    if (!user) {
+    if (!user) {  
+      console.log("❌ User not found in database");
       return res.status(404).json({ error: "User not found" });
     }
 
@@ -491,8 +457,12 @@ const getUserProfile = async (req: any, res: any) => {
     // Check if current user follows this user
     let isFollowing = false;
 
-    if (user.followers.some((f) => f.followerId === currentUserId)) {
-      isFollowing = true;
+    if (currentUserId) {
+      if (user.followers.some((f) => f.followerId === currentUserId)) {
+        isFollowing = true;
+      }
+    } else {
+      isFollowing = false;
     }
 
     // Get badges
@@ -563,9 +533,14 @@ const getUserPosts = async (req: any, res: any) => {
       take: parseInt(limit as string),
     });
 
-    const authorFb = await prisma.user.findUnique({
+    // const authorFb = await prisma.user.findUnique({
+    //   where: { id: authorId },
+    //   include: { followers: true },
+    // });
+
+     const authorFb = await prisma.user.findUnique({
       where: { id: authorId },
-      include: { followers: true },
+      select: {id: true, followers: { select: { followerId: true } } },
     });
 
     let isFollowing = false;
@@ -705,8 +680,6 @@ const createPost = async (req: any, res: any) => {
   }
 };
 
-// backend/controllers/socialController.ts - ADD THIS FUNCTION
-
 const deletePost = async (req: any, res: any) => {
   try {
     const userId = req.user?.id;
@@ -756,8 +729,6 @@ const deletePost = async (req: any, res: any) => {
   }
 };
 
-// backend/controllers/socialController.ts - ADD THIS FUNCTION
-
 const checkLikeStatus = async (req: any, res: any) => {
   try {
     const userId = req.user?.id;
@@ -789,8 +760,6 @@ const checkLikeStatus = async (req: any, res: any) => {
     res.status(500).json({ error: "Failed to check like status" });
   }
 };
-
-// backend/controllers/socialController.ts - ADD THIS FUNCTION
 
 const getSavedPosts = async (req: any, res: any) => {
   try {
@@ -875,7 +844,6 @@ const getSavedPosts = async (req: any, res: any) => {
 
 export default {
   createPost,
-  getFeed, // Keep existing
   getForYouFeed,
   getFollowingFeed,
   likePost,

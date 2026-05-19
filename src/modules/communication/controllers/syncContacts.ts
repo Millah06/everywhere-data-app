@@ -54,7 +54,7 @@ export const syncContacts = async (req: any, res: any) => {
   });
 
   const formattedUsers = users.map((user) => ({
-    uid: user.firebaseUid,
+    id: user.id,
     name: user.name,
     username: user.userProfile?.userName,
     avatarUrl: user.userProfile?.avatarUrl,

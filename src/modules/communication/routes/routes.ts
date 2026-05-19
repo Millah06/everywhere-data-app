@@ -3,6 +3,7 @@ import { authMiddleware } from "../../../middleware/auth";
 import { findByUsername } from "../controllers/addByUsername";
 import { findByPhone } from "../controllers/addByPhone";
 import { syncContacts } from "../controllers/syncContacts";
+import { createOrGetChatRoom } from "../controllers/getChatRoom.controller";
 
 
 
@@ -10,10 +11,12 @@ import { syncContacts } from "../controllers/syncContacts";
 const router = Router();
 
 // ── COMMUNICATION ───────────────────────────────────────────────────────────────
-router.get('/chat/find-by-username', authMiddleware, findByUsername);
+router.get('/chat/find-by-username',  findByUsername);
 
-router.get('/chat/find-by-phone', authMiddleware, findByPhone);
+router.get('/chat/find-by-phone', findByPhone);
 
-router.post('/chat/sync-contacts', authMiddleware, syncContacts);
+router.post('/chat/sync-contacts',  syncContacts);
+
+router.post('/chat/create-or-get-room', authMiddleware, createOrGetChatRoom);
 
 export default router;
