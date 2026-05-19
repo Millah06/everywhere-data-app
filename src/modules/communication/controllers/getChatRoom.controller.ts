@@ -46,7 +46,11 @@ export const createOrGetChatRoom = async (req: any, res: any) => {
       select: {
         id: true,
         name: true,
-        avatar: true,
+        userProfile: {
+            select: {
+                avatarUrl: true,
+            }
+        }
       },
     });
 
@@ -55,7 +59,11 @@ export const createOrGetChatRoom = async (req: any, res: any) => {
       select: {
         id: true,
         name: true,
-        avatar: true,
+        userProfile: {
+            select: {
+                avatarUrl: true,
+            }
+        }
       },
     });
 
@@ -77,12 +85,12 @@ export const createOrGetChatRoom = async (req: any, res: any) => {
         participantInfo: {
           [myId]: {
             name: myUser.name || "Unknown User",
-            avatar: myUser.avatar || null,
+            avatar: myUser.userProfile?.avatarUrl || null,
           },
 
           [otherUserId]: {
             name: otherUser.name || "Unknown User",
-            avatar: otherUser.avatar || null,
+            avatar: otherUser.userProfile?.avatarUrl || null,
           },
         },
 
