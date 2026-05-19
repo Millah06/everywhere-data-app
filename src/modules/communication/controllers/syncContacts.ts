@@ -3,7 +3,7 @@ import { prisma } from "../../../prisma";
 export const syncContacts = async (req: any, res: any) => {
   const { contacts } = req.body;
 
-  const currntUserId = req.user.id;
+  const currentUserId = req.user?.id || null;
 
   if (!Array.isArray(contacts)) {
     return res.status(400).json({
@@ -34,7 +34,7 @@ export const syncContacts = async (req: any, res: any) => {
 
   const users = await prisma.user.findMany({
     where: {
-      ...(currntUserId ? { id: { not: currntUserId } } : {}), // exclude current user
+      ...(currentUserId ? { id: { not: currentUserId } } : {}), // exclude current user
       phone: {
         in: normalizedNumbers,
       },
