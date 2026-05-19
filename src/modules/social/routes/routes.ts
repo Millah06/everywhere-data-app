@@ -56,10 +56,10 @@ router.get('/social/profile/:userId/posts', optionalAuthMiddleware, socialContro
 router.get('/social/posts/saved', authMiddleware, socialController.getSavedPosts);
 
 // View routes
-router.post('/social/posts/view', authMiddleware, viewController.incrementView);
+router.post('/social/posts/view', optionalAuthMiddleware, viewController.incrementView);
 
 // Report routes
-router.post('/social/reports', authMiddleware, reportController.reportPost);
+router.post('/social/reports', optionalAuthMiddleware, reportController.reportPost);
 router.get('/social/reports', authMiddleware, reportController.getReports);
 router.post('/social/reports/review', authMiddleware, reportController.reviewReport);
 

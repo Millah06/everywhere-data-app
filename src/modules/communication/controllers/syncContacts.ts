@@ -3,6 +3,8 @@ import { prisma } from "../../../prisma";
 export const syncContacts = async (req: any, res: any) => {
   const { contacts } = req.body;
 
+  const currntUserId = req.user.id;
+
   if (!Array.isArray(contacts)) {
     return res.status(400).json({
       message: "Contacts must be an array",
@@ -32,9 +34,7 @@ export const syncContacts = async (req: any, res: any) => {
 
   const users = await prisma.user.findMany({
     where: {
-      firebaseUid: {
-        not: req.user.uid,
-      },
+      ...(currntUserId ? { id: { not: currntUserId } } : {}), // exclude current user
       phone: {
         in: normalizedNumbers,
       },
