@@ -208,6 +208,14 @@ const getForYouFeed = async (req: any, res: any) => {
             user?.following.some((f) => f.followingId === doc.userId) || false;
         }
 
+        let isSaved = false;
+        if (userId) {
+          const saved = await prisma.savedPost.findUnique({
+            where: { userId_postId: { userId, postId: doc.id } },
+          });
+          isSaved = !!saved;
+        }
+
         let isLiked = false;
 
         // const like = await prisma.postLike.findUnique({
@@ -232,6 +240,7 @@ const getForYouFeed = async (req: any, res: any) => {
           isFollowing,
           repostCount: doc._count.reposts || 0,
           isLikedByCurrentUser: isLiked,
+          isSaved,
         });
       }),
     );
@@ -290,6 +299,14 @@ const getFollowingFeed = async (req: any, res: any) => {
 
     const posts = await Promise.all(
       rows.map(async (doc: any) => {
+
+        let isSaved = false;
+        if (userId) {
+          const saved = await prisma.savedPost.findUnique({
+            where: { userId_postId: { userId, postId: doc.id } },
+          });
+          isSaved = !!saved;
+        }
         let isLiked = false;
 
         const like = await prisma.postLike.findUnique({
@@ -304,6 +321,7 @@ const getFollowingFeed = async (req: any, res: any) => {
           isFollowing: true,
           repostCount: doc._count.reposts,
           isLikedByCurrentUser: isLiked,
+          isSaved,
         });
       }),
     );
@@ -554,6 +572,14 @@ const getUserPosts = async (req: any, res: any) => {
       select: { id: true, followers: { select: { followerId: true } } },
     });
 
+    let isSaved = false;
+    if (currentUserId && rows.length > 0) {
+      const saved = await prisma.savedPost.findUnique({
+        where: { userId_postId: { userId: currentUserId, postId: rows[0].id } },
+      });
+      isSaved = !!saved;
+    }
+
     let isFollowing = false;
     if (currentUserId && authorFb && authorFb.id !== currentUserId) {
       isFollowing = authorFb.followers.some(f => f.followerId === currentUserId);
@@ -573,7 +599,8 @@ const getUserPosts = async (req: any, res: any) => {
           where: { originalPostId: doc.id },
         });
 
-        return postToClientShape({ ...doc, isFollowing, isLikedByCurrentUser: isLiked, repostCount });
+        return postToClientShape({ ...doc, isFollowing, isLikedByCurrentUser: isLiked, repostCount, 
+          isSaved });
       }),
     );
 
@@ -842,6 +869,38 @@ const getSavedPosts = async (req: any, res: any) => {
   }
 };
 
+const toggleSavePost = async (req: any, res: any) => {
+  try {
+    const userId = req.user?.id;
+    const { postId } = req.params;
+
+    if (!userId || !postId) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    const existingSave = await prisma.savedPost.findUnique({
+      where: { userId_postId: { userId, postId } },
+    });
+
+    if (existingSave) {
+      await prisma.savedPost.delete({
+        where: { userId_postId: { userId, postId } },
+      });
+      return res.json({ success: true, message: "Post unsaved successfully" });
+    } else {
+      await prisma.savedPost.create({
+        data: { userId, postId },
+      });
+      return res.json({ success: true, message: "Post saved successfully" });
+    }
+  } catch (error: any) {
+    console.error("❌ Toggle save post error:", error);
+    res
+      .status(500)
+      .json({ error: "Failed to toggle save post", message: error.message });
+  }
+};
+
 export default {
   createPost,
   getForYouFeed,
@@ -857,4 +916,5 @@ export default {
   deletePost,
   checkLikeStatus,
   getSavedPosts,
+  toggleSavePost,
 };

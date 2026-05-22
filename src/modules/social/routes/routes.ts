@@ -54,6 +54,7 @@ router.get('/social/profile/:userId/posts', optionalAuthMiddleware, socialContro
 // backend/index.ts - ADD THIS ROUTE
 
 router.get('/social/posts/saved', authMiddleware, socialController.getSavedPosts);
+router.post('/social/posts/:postId/save', authMiddleware, socialController.toggleSavePost);
 
 // View routes
 router.post('/social/posts/view', optionalAuthMiddleware, viewController.incrementView);
