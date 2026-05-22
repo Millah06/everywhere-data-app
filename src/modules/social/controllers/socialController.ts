@@ -429,6 +429,8 @@ const getUserProfile = async (req: any, res: any) => {
     const { userId } = req.params;
     const currentUserId = req.user?.id;
 
+    const isOwner = currentUserId === userId;  // ← add this
+
     console.log("🔍 Getting profile for userId:", userId);
     console.log("🔍 Current user:", currentUserId);
 
@@ -474,17 +476,13 @@ const getUserProfile = async (req: any, res: any) => {
       userName: user.name || "Anonymous",
       displayName: profileDoc.userName || "Anonymous",
       bio: profileDoc.bio || "",
-      chatTag: null,
-      transferUID: user.transferUid || null,
-      email: user.email || null,
-      phoneNumber: user.phone || null,
+      country: user.country,
       avatar: profileDoc.avatarUrl || null,
       coverImage: profileDoc.coverPhotoUrl || null,
       website: profileDoc.website || null,
       location: profileDoc.location || null,
       businessEmail: profileDoc.businessEmail || null,
       isPrivate: profileDoc.isPrivate || false,
-      allowFollowersToMessage: profileDoc.allowFollowersToMessage || false,
       followerCount: profileDoc.followersCount || 0,
       followingCount: profileDoc.followingCount || 0,
       postCount: profileDoc.postCount || 0,
@@ -499,6 +497,15 @@ const getUserProfile = async (req: any, res: any) => {
       badges,
       isFollowing,
       isFollowingYou: false,
+
+      // ── Only send sensitive fields to the owner ────────────────────────
+    ...(isOwner && {
+      email: user.email || null,           // login email — owner only
+      phoneNumber: user.phone || null,     // phone — owner only
+      transferUID: user.transferUid || null, // financial ID — owner only
+      chatTag: null,                       // owner only
+      allowFollowersToMessage: profileDoc.allowFollowersToMessage || false,
+    }),
     };
 
     console.log("✅ Profile loaded successfully");
