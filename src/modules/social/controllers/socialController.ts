@@ -375,7 +375,7 @@ const followUser = async (req: any, res: any) => {
 
 const unfollowUser = async (req: any, res: any) => {
   try {
-    const followerId = req.user?.uid;
+    const followerId = req.user?.id;
     const { userId: followingId } = req.body;
 
     if (!followerId || !followingId) {
@@ -517,37 +517,39 @@ const getUserPosts = async (req: any, res: any) => {
   try {
     const { userId: userParam } = req.params;
     const currentUserId = req.user?.id;
-    const { limit = 20 } = req.query;
-
-    console.log("📥 Getting posts for user:", userParam);
-    console.log("🔍 Current user:", currentUserId);
+    const { limit = '15', lastPostId } = req.query;
+    const limitNum = Math.min(parseInt(limit as string), 30);
 
     const authorId = await resolveUserId(userParam);
     if (!authorId) {
-      return res.status(404).json({ error: "User not found" });
+      return res.status(404).json({ error: 'User not found' });
     }
 
-    const rows = await prisma.post.findMany({
+    const queryOptions: any = {
       where: { userId: authorId },
-      orderBy: { createdAt: "desc" },
-      take: parseInt(limit as string),
-    });
+      orderBy: { createdAt: 'desc' },
+      take: limitNum + 1, // Fetch one extra to determine hasMore
+    };
 
-    // const authorFb = await prisma.user.findUnique({
-    //   where: { id: authorId },
-    //   include: { followers: true },
-    // });
+    if (lastPostId) {
+      queryOptions.cursor = { id: lastPostId as string };
+      queryOptions.skip = 1;
+    }
 
-     const authorFb = await prisma.user.findUnique({
+    const rows = await prisma.post.findMany(queryOptions);
+
+    // Determine hasMore and trim the extra row
+    const hasMore = rows.length > limitNum;
+    if (hasMore) rows.pop();
+
+    const authorFb = await prisma.user.findUnique({
       where: { id: authorId },
-      select: {id: true, followers: { select: { followerId: true } } },
+      select: { id: true, followers: { select: { followerId: true } } },
     });
 
     let isFollowing = false;
     if (currentUserId && authorFb && authorFb.id !== currentUserId) {
-      isFollowing = authorFb.followers.some(
-        (f) => f.followerId === currentUserId,
-      );
+      isFollowing = authorFb.followers.some(f => f.followerId === currentUserId);
     }
 
     const posts = await Promise.all(
@@ -555,9 +557,7 @@ const getUserPosts = async (req: any, res: any) => {
         let isLiked = false;
         if (currentUserId) {
           const like = await prisma.postLike.findUnique({
-            where: {
-              postId_userId: { postId: doc.id, userId: currentUserId },
-            },
+            where: { postId_userId: { postId: doc.id, userId: currentUserId } },
           });
           isLiked = !!like;
         }
@@ -566,21 +566,14 @@ const getUserPosts = async (req: any, res: any) => {
           where: { originalPostId: doc.id },
         });
 
-        return postToClientShape({
-          ...doc,
-          isFollowing,
-          isLikedByCurrentUser: isLiked,
-          repostCount,
-        });
+        return postToClientShape({ ...doc, isFollowing, isLikedByCurrentUser: isLiked, repostCount });
       }),
     );
 
-    console.log("✅ Loaded", posts.length, "posts with like status");
-
-    res.json({ success: true, posts });
+    res.json({ success: true, posts, hasMore });
   } catch (error: any) {
-    console.error("Get user posts error:", error);
-    res.status(500).json({ error: "Failed to fetch posts" });
+    console.error('Get user posts error:', error);
+    res.status(500).json({ error: 'Failed to fetch posts' });
   }
 };
 
