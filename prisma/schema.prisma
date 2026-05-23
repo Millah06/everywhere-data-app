@@ -135,6 +135,7 @@ model User {
   postViewTrackers  PostViewTracker[] @relation("PostViews")
   followers         Follow[] @relation("Following")
   following         Follow[] @relation("Follower")
+  searchHistory SearchHistory[]
   
   sentGifts        GiftTransaction[] @relation("GiftSender")
   receivedGifts    GiftTransaction[] @relation("GiftReceiver")
@@ -142,6 +143,7 @@ model User {
 
   @@index([firebaseUid, createdAt])
   @@index([email])
+   @@index([name])
   @@index([transferUid])
   @@index([phone])
 }
@@ -174,6 +176,10 @@ model UserProfile {
   updatedAt              DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userName])                          
+  @@index([followersCount])                    
+  @@index([isVerified, followersCount])       
 }
 
 model Badges {
@@ -318,9 +324,10 @@ model Post {
   reposts        Repost[] @relation("OriginalPost")
 
   @@index([userId, createdAt])
+  @@index([text])                             // Full-text search index (PostgreSQL)
   @@index([algorithmScore, createdAt])
   @@index([isBoosted, createdAt])
-  @@index([createdAt])
+  @@index([createdAt])              
 }
 
 model PostLike {
@@ -399,6 +406,22 @@ model Follow {
   @@unique([followerId, followingId])
   @@index([followerId])
   @@index([followingId])
+}
+
+model SearchHistory {
+  id          String   @id @default(uuid())
+  userId      String
+  kind        String   // "user" | "hashtag" | "query"
+  label       String
+  subLabel    String?
+  avatarUrl   String?
+  refUserId   String?  // if kind == "user"
+  searchedAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, label])   // upsert key
+  @@index([userId, searchedAt])
 }
 
 model Kyc {

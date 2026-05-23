@@ -1,7 +1,6 @@
 // backend/controllers/socialController.ts
 
 import admin from "firebase-admin";
-import { calculateAlgorithmScore } from "../services/algorithmService";
 import { prisma } from "../../../prisma";
 import { resolveUserId } from "../utils/resolveUser";
 import { postToClientShape } from "../services/postPresentation";

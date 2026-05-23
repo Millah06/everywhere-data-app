@@ -9,6 +9,10 @@ import authRouter from "../modules/auth/routes/routes";
 import walletRouter from "../modules/wallet/routes/routes";
 import supportChatRouter from "../modules/support/routes/routes";
 import CommunicationRouter from "../modules/communication/routes/routes";
+import searchRoutes from "../modules/search/routes/search.routes";
+import { optionalAuthMiddleware} from "../middleware/auth";
+import { getFollowers, getFollowing } from "../modules/search/controllers/search.controller";
+
 
 const router = Router();
 
@@ -22,6 +26,9 @@ router.use(authRouter);
 router.use(walletRouter);
 router.use(supportChatRouter);
 router.use(CommunicationRouter);
+router.use('/search', searchRoutes);
+router.get('/users/:userId/followers', optionalAuthMiddleware, getFollowers);
+router.get('/users/:userId/following', optionalAuthMiddleware, getFollowing);
 
 
 export default router;
