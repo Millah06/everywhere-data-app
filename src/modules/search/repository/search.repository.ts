@@ -2,10 +2,9 @@
 // search.repository.ts  — All raw Prisma queries, zero business logic here
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { PrismaClient, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import { prisma } from '../../../prisma';
 import { CursorPayload, decodeCursor, RANK } from '../types/search.types';
-
-const prisma = new PrismaClient();
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
