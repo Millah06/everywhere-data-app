@@ -408,10 +408,16 @@ model Follow {
   @@index([followingId])
 }
 
+enum SuggestionKind {
+  user
+  hashtag
+  query
+}
+
 model SearchHistory {
   id          String   @id @default(uuid())
   userId      String
-  kind        String   // "user" | "hashtag" | "query"
+  kind        SuggestionKind
   label       String
   subLabel    String?
   avatarUrl   String?

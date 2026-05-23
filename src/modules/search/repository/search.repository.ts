@@ -3,7 +3,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { PrismaClient, Prisma } from '@prisma/client';
-import { CursorPayload, decodeCursor, RANK } from './search.types';
+import { CursorPayload, decodeCursor, RANK } from '../types/search.types';
 
 const prisma = new PrismaClient();
 

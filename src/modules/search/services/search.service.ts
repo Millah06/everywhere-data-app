@@ -22,9 +22,10 @@ import {
   encodeCursor,
   decodeCursor,
   CursorPayload,
-} from './search.types';
+  SearchHistoryItem,
+} from '../types/search.types';
 
-import * as repo from './search.repository';
+import * as repo from '../repository/search.repository';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Query parsing
@@ -389,9 +390,9 @@ export async function getSearchSuggestions(
 
   const recentSearches = req.requesterId
     ? await repo.getSearchHistory(req.requesterId, 8)
-    : [];
+    : [] ;
 
-  return { suggestions: suggestions.slice(0, limit), recentSearches };
+  return { suggestions: suggestions.slice(0, limit), recentSearches};
 }
 
 export async function getTrending(req: TrendingRequest): Promise<TrendingResponse> {

@@ -130,8 +130,8 @@ export interface SearchHistoryItem {
   id: string;
   kind: SuggestionKind;
   label: string;
-  subLabel?: string;
-  avatarUrl?: string;
+  subLabel?: string | null;
+  avatarUrl?: string | null;
   userId?: string;
   searchedAt: Date;
 }
