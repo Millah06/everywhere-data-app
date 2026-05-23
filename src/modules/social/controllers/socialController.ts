@@ -298,7 +298,6 @@ const getFollowingFeed = async (req: any, res: any) => {
 
     const posts = await Promise.all(
       rows.map(async (doc: any) => {
-
         let isSaved = false;
         if (userId) {
           const saved = await prisma.savedPost.findUnique({
@@ -364,19 +363,31 @@ const followUser = async (req: any, res: any) => {
       const existingFollow = await tx.follow.findUnique({
         where: { followerId_followingId: { followerId, followingId } },
       });
+
       if (existingFollow) {
         throw new Error("Already following this user");
       }
+
       await tx.follow.create({
         data: {
           followerId,
           followingId,
         },
       });
+
+      // Increment target user's followers count
       await tx.userProfile.update({
         where: { userId: followingId },
         data: {
           followersCount: { increment: 1 },
+        },
+      });
+
+      // Increment current user's following count
+      await tx.userProfile.update({
+        where: { userId: followerId },
+        data: {
+          followingCount: { increment: 1 },
         },
       });
     });
@@ -446,7 +457,7 @@ const getUserProfile = async (req: any, res: any) => {
     const { userId } = req.params;
     const currentUserId = req.user?.id;
 
-    const isOwner = currentUserId === userId;  // ← add this
+    const isOwner = currentUserId === userId; // ← add this
 
     console.log("🔍 Getting profile for userId:", userId);
     console.log("🔍 Current user:", currentUserId);
@@ -459,7 +470,7 @@ const getUserProfile = async (req: any, res: any) => {
       },
     });
 
-    if (!user) {  
+    if (!user) {
       console.log("❌ User not found in database");
       return res.status(404).json({ error: "User not found" });
     }
@@ -516,13 +527,13 @@ const getUserProfile = async (req: any, res: any) => {
       isFollowingYou: false,
 
       // ── Only send sensitive fields to the owner ────────────────────────
-    ...(isOwner && {
-      email: user.email || null,           // login email — owner only
-      phoneNumber: user.phone || null,     // phone — owner only
-      transferUID: user.transferUid || null, // financial ID — owner only
-      chatTag: null,                       // owner only
-      allowFollowersToMessage: profileDoc.allowFollowersToMessage || false,
-    }),
+      ...(isOwner && {
+        email: user.email || null, // login email — owner only
+        phoneNumber: user.phone || null, // phone — owner only
+        transferUID: user.transferUid || null, // financial ID — owner only
+        chatTag: null, // owner only
+        allowFollowersToMessage: profileDoc.allowFollowersToMessage || false,
+      }),
     };
 
     console.log("✅ Profile loaded successfully");
@@ -541,17 +552,17 @@ const getUserPosts = async (req: any, res: any) => {
   try {
     const { userId: userParam } = req.params;
     const currentUserId = req.user?.id;
-    const { limit = '15', lastPostId } = req.query;
+    const { limit = "15", lastPostId } = req.query;
     const limitNum = Math.min(parseInt(limit as string), 30);
 
     const authorId = await resolveUserId(userParam);
     if (!authorId) {
-      return res.status(404).json({ error: 'User not found' });
+      return res.status(404).json({ error: "User not found" });
     }
 
     const queryOptions: any = {
       where: { userId: authorId },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
       take: limitNum + 1, // Fetch one extra to determine hasMore
     };
 
@@ -581,7 +592,9 @@ const getUserPosts = async (req: any, res: any) => {
 
     let isFollowing = false;
     if (currentUserId && authorFb && authorFb.id !== currentUserId) {
-      isFollowing = authorFb.followers.some(f => f.followerId === currentUserId);
+      isFollowing = authorFb.followers.some(
+        (f) => f.followerId === currentUserId,
+      );
     }
 
     const posts = await Promise.all(
@@ -598,15 +611,20 @@ const getUserPosts = async (req: any, res: any) => {
           where: { originalPostId: doc.id },
         });
 
-        return postToClientShape({ ...doc, isFollowing, isLikedByCurrentUser: isLiked, repostCount, 
-          isSaved });
+        return postToClientShape({
+          ...doc,
+          isFollowing,
+          isLikedByCurrentUser: isLiked,
+          repostCount,
+          isSaved,
+        });
       }),
     );
 
     res.json({ success: true, posts, hasMore });
   } catch (error: any) {
-    console.error('Get user posts error:', error);
-    res.status(500).json({ error: 'Failed to fetch posts' });
+    console.error("Get user posts error:", error);
+    res.status(500).json({ error: "Failed to fetch posts" });
   }
 };
 
