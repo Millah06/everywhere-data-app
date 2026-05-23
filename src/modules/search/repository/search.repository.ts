@@ -176,6 +176,24 @@ export async function queryHashtags({ clean, cursor, limit }: HashtagQueryParams
   return rows;
 }
 
+// export async function getTrendingHashtags(windowHours: number, limit: number) {
+//   const rows = await prisma.$queryRaw<
+//     Array<{ tag: string; post_count: bigint; recent_count: bigint }>
+//   >`
+//     SELECT
+//       lower(unnested_tag) AS tag,
+//       COUNT(*)            AS post_count,
+//       COUNT(*) FILTER (WHERE p."createdAt" > NOW() - INTERVAL '${windowHours} hours') AS recent_count
+//     FROM "Post" p,
+//          UNNEST(p.hashtags) AS unnested_tag
+//     GROUP BY lower(unnested_tag)
+//     HAVING COUNT(*) FILTER (WHERE p."createdAt" > NOW() - INTERVAL '${windowHours} hours') > 0
+//     ORDER BY recent_count DESC, post_count DESC
+//     LIMIT ${limit}
+//   `;
+//   return rows;
+// }
+
 export async function getTrendingHashtags(windowHours: number, limit: number) {
   const rows = await prisma.$queryRaw<
     Array<{ tag: string; post_count: bigint; recent_count: bigint }>
@@ -183,17 +201,16 @@ export async function getTrendingHashtags(windowHours: number, limit: number) {
     SELECT
       lower(unnested_tag) AS tag,
       COUNT(*)            AS post_count,
-      COUNT(*) FILTER (WHERE p."createdAt" > NOW() - INTERVAL '${windowHours} hours') AS recent_count
+      COUNT(*) FILTER (WHERE p."createdAt" > NOW() - (${windowHours} * INTERVAL '1 hour')) AS recent_count
     FROM "Post" p,
          UNNEST(p.hashtags) AS unnested_tag
     GROUP BY lower(unnested_tag)
-    HAVING COUNT(*) FILTER (WHERE p."createdAt" > NOW() - INTERVAL '${windowHours} hours') > 0
+    HAVING COUNT(*) FILTER (WHERE p."createdAt" > NOW() - (${windowHours} * INTERVAL '1 hour')) > 0
     ORDER BY recent_count DESC, post_count DESC
     LIMIT ${limit}
   `;
   return rows;
 }
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Search history
 // ─────────────────────────────────────────────────────────────────────────────

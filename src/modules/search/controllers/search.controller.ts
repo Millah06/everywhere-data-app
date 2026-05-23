@@ -104,7 +104,6 @@ const getHistory = async (req: any, res: any) => {
   try {
     const userId = req.user.id;
     if (!userId) return err(res, 401, 'Unauthenticated');
-    const history = await service.saveSearchHistory(userId, {} as any); // reuse repo directly
     // Actually delegate to repo
     const { getSearchHistory } = await import('../repository/search.repository');
     const items = await getSearchHistory(userId, 20);

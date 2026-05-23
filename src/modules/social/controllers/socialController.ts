@@ -429,12 +429,14 @@ const unfollowUser = async (req: any, res: any) => {
       await tx.follow.delete({
         where: { followerId_followingId: { followerId, followingId } },
       });
+      
       await tx.userProfile.update({
         where: { userId: followingId },
         data: {
           followersCount: { decrement: 1 },
         },
       });
+
       await tx.userProfile.update({
         where: { userId: followerId },
         data: {
