@@ -1,11 +1,12 @@
 import axios from "axios";
+import { nanoid } from "nanoid";
 
 const initiateOpayCheckout = async (req: any, res: any) => {
   try {
     const url =
       "https://testapi.opaycheckout.com/api/v1/international/cashier/create";
     const payload = {
-      reference: "PE462239089403840840038993",
+      reference: nanoid().toUpperCase().slice(0, 12), // Unique reference for the transaction
       amount: {
         total: 2000,
         currency: "NGN",
