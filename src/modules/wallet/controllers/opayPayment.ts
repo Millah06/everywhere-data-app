@@ -42,9 +42,8 @@ const initiateOpayCheckout = async (req: any, res: any) => {
       message: "OPay checkout initiated successfully.",
       url: cashierUrl,
     });
-  } catch (error) {
-    console.error("Error initiating OPay checkout:", error);
-    res.status(500).json({ message: "Failed to initiate OPay checkout." });
+  } catch (e: any) {
+    res.status(500).json({ message: e.message });
   }
 };
 
