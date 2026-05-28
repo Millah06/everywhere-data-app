@@ -3,6 +3,7 @@ import { authMiddleware } from "../../../middleware/auth";
 import virtualAccountController from "../controllers/virtualAccount.controller";
 import walletController from "../controllers/wallet.controller";
 import externalWithdrawalController from "../controllers/externalWithdrawal.controller.";
+import OpayCheckout  from "../controllers/opayPayment";
 const router = Router();
 
 router.get("/banks/list", externalWithdrawalController.fetchListOfBanks);
@@ -57,5 +58,10 @@ router.post(
 );
 // Paystack webhook — must be public, no auth, raw body parsing required
 router.post("/wallet/webhook/paystack", walletController.paystackWebhook);
+
+router.post(
+  "/opay/deep-link",
+  OpayCheckout.initiateOpayCheckout,
+);
 
 export default router;
