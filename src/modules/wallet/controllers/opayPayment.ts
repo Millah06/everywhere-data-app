@@ -5,13 +5,12 @@ const initiateOpayCheckout = async (req: any, res: any) => {
     const url =
       "https://testapi.opaycheckout.com/api/v1/international/cashier/create";
     const payload = {
+      reference: "PE462239089403840840038993",
       amount: {
         total: 2000,
         currency: "NGN",
       },
-      returnUrl: "https://your-return-url",
-      callbackUrl: "https://your-call-back-url",
-      cancelUrl: "https://your-cancel-url",
+      returnUrl: "https://amrili.com/checkout-success",
       displayName: "Amrili Digital Services Limited",
       customerVisitSource: "ANDROID",
       evokeOpay: true,
@@ -22,7 +21,6 @@ const initiateOpayCheckout = async (req: any, res: any) => {
         name: "amril gifting",
       },
       payMethod: "OpayWalletNg",
-      referenceId: "PE462239089403840840038993",
       country: "NG",
     };
 
