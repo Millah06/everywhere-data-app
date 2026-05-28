@@ -12,7 +12,7 @@ const initiateOpayCheckout = async (req: any, res: any) => {
       returnUrl: "https://your-return-url",
       callbackUrl: "https://your-call-back-url",
       cancelUrl: "https://your-cancel-url",
-      displayName: "Your Business Name",
+      displayName: "Amrili Digital Services Limited",
       customerVisitSource: "ANDROID",
       evokeOpay: true,
       expireAt: 300,
