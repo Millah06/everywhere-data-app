@@ -16,12 +16,14 @@ const initiateOpayCheckout = async (req: any, res: any) => {
       customerVisitSource: "ANDROID",
       evokeOpay: true,
       expireAt: 300,
-      sn: "PE462xxxxxxxx",
+      sn: "PE462239089403840840038993",
       product: {
         description: "description",
-        name: "name",
+        name: "amril gifting",
       },
       payMethod: "OpayWalletNg",
+      referenceId: "PE462239089403840840038993",
+      country: "NG",
     };
 
     //Authorization: Bearer {PublicKey}
@@ -37,10 +39,9 @@ const initiateOpayCheckout = async (req: any, res: any) => {
 
     const response = await axios.post(url, payload, { headers });
 
-    const { cashierUrl } = response.data.data;
     res.status(200).json({
       message: "OPay checkout initiated successfully.",
-      url: cashierUrl,
+      data: response.data,
     });
   } catch (e: any) {
     res.status(500).json({ message: e.message });
