@@ -3,17 +3,21 @@ import { nanoid } from "nanoid";
 
 const initiateOpayCheckout = async (req: any, res: any) => {
   try {
+
+    const { amount, platform } = req.body;
+
     const url =
       "https://testapi.opaycheckout.com/api/v1/international/cashier/create";
+
     const payload = {
       reference: nanoid().toUpperCase().slice(0, 12), // Unique reference for the transaction
       amount: {
-        total: 2000,
+        total: amount * 100, // Amount in kobo (for NGN)
         currency: "NGN",
       },
       returnUrl: "https://amrili.com/checkout-success",
       displayName: "Amrili Digital Services Limited",
-      customerVisitSource: "ANDROID",
+      customerVisitSource: platform || "BROWSER",
       evokeOpay: true,
       expireAt: 300,
       sn: "PE462239089403840840038993",

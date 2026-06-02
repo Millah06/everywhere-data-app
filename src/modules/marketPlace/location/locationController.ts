@@ -3,8 +3,6 @@ import { prisma } from "../../../prisma";
 
 const getStates = async (req: any, res: any) => {
   try {
-    if (!req.user) return res.status(401).json({ message: "Unauthorized" });
-
     const states = await prisma.locationState.findMany({
       orderBy: { name: "asc" },
     });
@@ -16,8 +14,6 @@ const getStates = async (req: any, res: any) => {
 
 const getLgas = async (req: any, res: any) => {
   try {
-    if (!req.user) return res.status(401).json({ message: "Unauthorized" });
-
     const { stateId } = req.params;
     const lgas = await prisma.locationLga.findMany({
       where: { stateId },
@@ -31,8 +27,6 @@ const getLgas = async (req: any, res: any) => {
 
 const getAreas = async (req: any, res: any) => {
   try {
-    if (!req.user) return res.status(401).json({ message: "Unauthorized" });
-
     const { lgaId } = req.params;
     const areas = await prisma.locationArea.findMany({
       where: { lgaId },
@@ -46,8 +40,6 @@ const getAreas = async (req: any, res: any) => {
 
 const getStreets = async (req: any, res: any) => {
   try {
-    if (!req.user) return res.status(401).json({ message: "Unauthorized" });
-
     const { areaId } = req.params;
     const streets = await prisma.locationStreet.findMany({
       where: { areaId },
@@ -61,8 +53,6 @@ const getStreets = async (req: any, res: any) => {
 
 const getFullHierarchy = async (req: any, res: any) => {
   try {
-    if (!req.user) return res.status(401).json({ message: "Unauthorized" });
-
     const states = await prisma.locationState.findMany({
       include: {
         lgas: {

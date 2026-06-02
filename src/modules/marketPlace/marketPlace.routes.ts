@@ -1,12 +1,13 @@
 import {Router} from "express";
 import chatController from "./chat/chatController";
-import { authMiddleware } from "../../middleware/auth";
+import { authMiddleware, optionalAuthMiddleware } from "../../middleware/auth";
 import branchController from "./branch/branchController";
 import locationController from "./location/locationController";
 import menuController from "./menu/menuController";
 import orderController from "./order/orderController";
 import uploadController from "./upload/uploadController";
 import vendorController from "./vendor/vendorController";
+import webController from "./web/webController";
 import multer from "multer";
 
 
@@ -18,17 +19,17 @@ const router = Router();
 // ── VENDOR ────────────────────────────────────────────────────────────────────
 // NOTE: /vendor/me and /vendor/metrics MUST come before /vendor/:id
 // because Express matches routes top-to-bottom and :id would swallow "me"
-router.get("/vendor/list",  authMiddleware, vendorController.getVendors);
+router.get("/vendor/list", optionalAuthMiddleware, vendorController.getVendors);
 router.get("/vendor/me", authMiddleware, vendorController.getMyVendor);
 router.get("/vendor/metrics", authMiddleware, vendorController.getVendorMetrics);
-router.get("/vendor/:id", authMiddleware, vendorController.getVendorById);
+router.get("/vendor/:id", optionalAuthMiddleware, vendorController.getVendorById);
 router.get("/vendor/manager/branches", authMiddleware, vendorController.getMangerBranches);
 router.post("/vendor/apply", authMiddleware, vendorController.applyAsVendor);
 router.put("/vendor/visibility", authMiddleware, vendorController.toggleVisibility);
 router.put("/vendor/pod-toggle", vendorController.togglePodAcceptance); // simple toggle like visibility
 router.put("/vendor/profile", authMiddleware, vendorController.updateProfile);
 router.post("/vendor/:id/review", authMiddleware, vendorController.addReview);
-router.get("/vendor/:id/reviews", authMiddleware, vendorController.getReviews);
+router.get("/vendor/:id/reviews", optionalAuthMiddleware, vendorController.getReviews);
 router.post("/vendor/upload/logo", upload.single("image"), uploadController.uploadVendorLogo);
 router.post("/vendor/upload/coverPhoto", upload.single("image"), uploadController.uploadVendorCoverImage);
 router.post("/vendor/upload/cac", authMiddleware, upload.single("image"), uploadController.uploadCacCertificate);
@@ -36,9 +37,9 @@ router.post("/vendor/verify/request", authMiddleware, vendorController.requestVe
 router.delete("/vendor/delete", authMiddleware, vendorController.deleteVendorAccount);
 
 // ── BRANCH ────────────────────────────────────────────────────────────────────
-router.get("/branch/:branchId/menu", authMiddleware, branchController.getBranchMenu);
+router.get("/branch/:branchId/menu", optionalAuthMiddleware, branchController.getBranchMenu);
 router.get("/branch/manager/menu", authMiddleware, branchController.getManagersMenu); 
-router.get("/branch/:branchId/delivery-zones", authMiddleware, branchController.getDeliveryZones);
+router.get("/branch/:branchId/delivery-zones", optionalAuthMiddleware, branchController.getDeliveryZones);
 router.post("/branch/add", authMiddleware, branchController.addBranch);
 router.put("/branch/:branchId/update", authMiddleware, branchController.updateBranch);
 router.delete("/branch/:branchId/delete", authMiddleware, branchController.deleteBranch);
@@ -82,12 +83,20 @@ router.get("/chat/:orderId/messages", authMiddleware, chatController.getMessages
 
 // ── LOCATION ──────────────────────────────────────────────────────────────────
 // Used by Flutter dropdowns: state → lga → area → street (each call uses the id from previous)
-router.get("/location/states", authMiddleware, locationController.getStates);
-router.get("/location/lgas/:stateId", authMiddleware, locationController.getLgas);
-router.get("/location/areas/:lgaId", authMiddleware, locationController.getAreas);
-router.get("/location/streets/:areaId", authMiddleware, locationController.getStreets);
-router.get("/location/hierarchy", authMiddleware, locationController.getFullHierarchy);
+router.get("/location/states", optionalAuthMiddleware, locationController.getStates);
+router.get("/location/lgas/:stateId", optionalAuthMiddleware, locationController.getLgas);
+router.get("/location/areas/:lgaId", optionalAuthMiddleware, locationController.getAreas);
+router.get("/location/streets/:areaId", optionalAuthMiddleware, locationController.getStreets);
+router.get("/location/hierarchy", optionalAuthMiddleware, locationController.getFullHierarchy);
 
+// ── WEB / DEEP-LINK PUBLIC READS (optional auth — guests allowed) ───────────
+// These power the deep-link landing pages + (Phase 3) the Cloudflare SEO
+// worker. They are NOT a separate module: just existing-style controllers
+// wrapped with optionalAuthMiddleware, returning public-safe payloads.
+router.get("/web/store/:vendorId", optionalAuthMiddleware, webController.getStorePublic);
+router.get("/web/product/:menuItemId", optionalAuthMiddleware, webController.getProductPublic);
+// /web/store/:vendorId/table/:tableId → Phase 6
+// /web/post/:postId, /web/u/:userHandle → Phase 2 (social module)
 
 
 export default router;

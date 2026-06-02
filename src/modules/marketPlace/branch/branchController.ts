@@ -27,8 +27,6 @@ const getManagersMenu = async (req: any, res: any) => {
 
 const getBranchMenu = async (req: any, res: any) => {
   try {
-    if (!req.user) return res.status(401).json({ message: "Unauthorized" });
-
     const branchId = req.params.branchId;
 
     const items = await prisma.menuItem.findMany({
@@ -44,8 +42,6 @@ const getBranchMenu = async (req: any, res: any) => {
 
 const getDeliveryZones = async (req: any, res: any) => {
   try {
-    if (!req.user) return res.status(401).json({ message: "Unauthorized" });
-
     const { branchId } = req.params;
 
     const zones = await prisma.deliveryZone.findMany({ where: { branchId } });

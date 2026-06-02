@@ -4,8 +4,6 @@ import { requireMainBranch } from "../branch/branchAuth";
 
 const getVendors = async (req: any, res: any) => {
   try {
-    if (!req.user) return res.status(401).json({ message: "Unauthorized" });
-
     const { vendorType, state, lga, search, sortBy } = req.query;
 
     const where: any = { status: "approved", isVisible: true };
@@ -51,8 +49,6 @@ const getVendors = async (req: any, res: any) => {
 
 const getVendorById = async (req: any, res: any) => {
   try {
-    if (!req.user) return res.status(401).json({ message: "Unauthorized" });
-
     const { id } = req.params;
 
     const vendor = await prisma.vendor.findUnique({

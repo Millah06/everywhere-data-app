@@ -26,6 +26,16 @@ enum TransferStatus {
   failed
 }
 
+enum PaymentStatus { 
+  CREATED 
+  PENDING 
+  VERIFYING 
+  SUCCESS 
+  FAILED 
+  EXPIRED 
+  REFUNDED 
+}
+
 enum role {
   user
   vendor
@@ -122,6 +132,7 @@ model User {
   orders         Order[]
   userProfile    UserProfile?
   transactions   Transaction[]
+  payments Payment[]
   notifications  Notification[]
 
   vendor         Vendor[]
@@ -258,6 +269,104 @@ model Transaction {
   @@index([userId, createdAt])
   @@index([transactionRef])
   @@index([humanRef])
+}
+
+model Payment {
+  id              String        @id @default(uuid())
+  userId          String
+  amount          Float
+  currency        String        @default("NGN")
+  provider        String        // "wallet" | "opay"
+  status          PaymentStatus @default(CREATED)
+  providerRef     String?
+  providerMeta    Json?
+  entityType      String        // "marketplace_order" | "utility" | "dine_in_order"
+  entityId        String
+  clientRequestId String?       @unique
+  webhookVerified Boolean       @default(false)
+  webhookPayload  Json?
+  webhookReceivedAt DateTime?
+  returnUrl       String?
+  expiresAt       DateTime?
+  attempts        PaymentAttempt[]
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  user User @relation(fields: [userId], references: [id])
+  @@index([userId])
+  @@index([status])
+  @@index([providerRef])
+  @@index([entityId])
+}
+
+model PaymentAttempt {
+  id          String   @id @default(uuid())
+  paymentId   String
+  provider    String
+  status      String
+  providerRef String?
+  response    Json?
+  createdAt   DateTime @default(now())
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  @@index([paymentId])
+}
+
+model MerchantTrustProfile {
+  id       String @id @default(uuid())
+  vendorId String @unique
+  level    Int    @default(0)            // 0 unverified · 1 identity · 2 trusted · 3 business
+  identityDocumentUrl String?
+  identityVerified    Boolean @default(false)
+  faceVerified        Boolean @default(false)
+  phoneVerified       Boolean @default(false)
+  cacVerified         Boolean  @default(false)   // Vendor.cacCertificateUrl already stores the doc
+  verificationFeePaid Boolean  @default(false)
+  adminApproved       Boolean  @default(false)
+  adminReviewNote     String?
+  adminReviewedAt     DateTime?
+  adminReviewedBy     String?
+  settlementDelayHours Int   @default(48)         // 48 | 24 | 0
+  dailyWithdrawalLimit Float @default(50000)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+}
+
+model TrustLevelUpgradeRequest {
+  id        String   @id @default(uuid())
+  vendorId  String
+  toLevel   Int
+  status    String   @default("pending") // pending | approved | rejected
+  adminNote String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([vendorId])
+  @@index([status])
+}
+
+model RestaurantTable {
+  id          String   @id @default(uuid())
+  vendorId    String
+  branchId    String
+  tableNumber String
+  capacity    Int      @default(4)
+  isActive    Boolean  @default(true)
+  qrCodeUrl   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  @@unique([branchId, tableNumber])
+  @@index([vendorId])
+  @@index([branchId])
+}
+
+model DailyOrderCounter {
+  id       String @id @default(uuid())
+  branchId String
+  date     String // YYYY-MM-DD
+  counter  Int    @default(0)
+  @@unique([branchId, date])
+  @@index([branchId])
 }
 
 model Transfer {
@@ -491,6 +600,10 @@ model Vendor {
   orders   Order[]
   reviews  Review[]
 
+  trustProfile     MerchantTrustProfile?
+  tables           RestaurantTable[]
+  fulfillmentTypes String[]              @default(["delivery"])
+
   user User              @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 }
 
@@ -515,6 +628,7 @@ model Branch {
   deliveryZones DeliveryZone[]
   menuItems     MenuItem[]
   orders        Order[]
+  tables RestaurantTable[]
 
   @@index([vendorId])
 }
@@ -589,6 +703,10 @@ model Order {
   branch Branch      @relation(fields: [branchId], references: [id])
   user   User        @relation(fields: [userId], references: [id])
   items  OrderItem[]
+  fulfillmentType String  @default("delivery") // delivery | pickup | dine_in
+  tableId         String?
+  tableNumber     String?
+  orderNumber     Int?
   escrow Escrow?
 
   @@index([createdAt])
