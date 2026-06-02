@@ -31,7 +31,7 @@ const ASSETLINKS = [
       namespace: "android_app",
       package_name: "com.amril.app",
       sha256_cert_fingerprints: [
-        "REPLACE_WITH_RELEASE_SHA256", // e.g. "AB:CD:12:...:EF"
+        "A9:E9:42:98:60:A8:65:E9:3C:68:D8:8A:2E:A3:A4:CC:C7:2D:AF:EB:94:FA:F5:DA:8C:2C:3E:00:75:4C:AF:B1", // e.g. "AB:CD:12:...:EF"
       ],
     },
   },

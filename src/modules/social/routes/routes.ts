@@ -44,6 +44,10 @@ router.get('/social/feed/foryou', optionalAuthMiddleware, socialController.getFo
 router.get('/social/feed/following', authMiddleware, socialController.getFollowingFeed);
 router.post('/social/posts/:postId/view', authMiddleware, viewController.incrementView);
 
+// ── WEB / DEEP-LINK PUBLIC READS (optional auth — guests allowed) ───────────
+router.get('/web/post/:postId', optionalAuthMiddleware, socialController.getPostById);
+router.get('/web/u/:userHandle', optionalAuthMiddleware, socialController.getPublicProfileByHandle);
+
 // Follow routes
 router.post('/social/follow', authMiddleware, socialController.followUser);
 router.post('/social/unfollow', authMiddleware, socialController.unfollowUser);

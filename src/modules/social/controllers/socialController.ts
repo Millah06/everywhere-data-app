@@ -920,6 +920,121 @@ const toggleSavePost = async (req: any, res: any) => {
   }
 };
 
+// GET /web/post/:postId  (optionalAuthMiddleware)
+// Public single-post read for the /post/:id deep link + SEO worker.
+const getPostById = async (req: any, res: any) => {
+  try {
+    const currentUserId = req.user?.id ?? null; // may be null (guest)
+    const { postId } = req.params;
+
+    const post = await prisma.post.findUnique({
+      where: { id: postId },
+      include: { _count: { select: { reposts: true } } },
+    });
+
+    if (!post) return res.status(404).json({ error: "Post not found" });
+
+    let isLiked = false;
+    let isSaved = false;
+    let isFollowing = false;
+
+    if (currentUserId) {
+      const like = await prisma.postLike.findUnique({
+        where: { postId_userId: { postId: post.id, userId: currentUserId } },
+      });
+      isLiked = !!like;
+
+      const saved = await prisma.savedPost.findUnique({
+        where: { userId_postId: { userId: currentUserId, postId: post.id } },
+      });
+      isSaved = !!saved;
+
+      if (post.userId !== currentUserId) {
+        const follow = await prisma.follow.findUnique({
+          where: {
+            followerId_followingId: {
+              followerId: currentUserId,
+              followingId: post.userId,
+            },
+          },
+        });
+        isFollowing = !!follow;
+      }
+    }
+
+    const shaped = postToClientShape({
+      ...(post as any),
+      repostCount: post._count.reposts,
+      isLikedByCurrentUser: isLiked,
+      isSaved,
+      isFollowing,
+    });
+
+    return res.json({ success: true, post: shaped });
+  } catch (error: any) {
+    console.error("getPostById error:", error);
+    return res
+      .status(500)
+      .json({ error: "Failed to fetch post", message: error.message });
+  }
+};
+
+// GET /web/u/:userHandle  (optionalAuthMiddleware)
+// Read-only public profile by handle (handle == unique UserProfile.userName).
+const getPublicProfileByHandle = async (req: any, res: any) => {
+  try {
+    const currentUserId = req.user?.id ?? null;
+    const { userHandle } = req.params;
+
+    const profile = await prisma.userProfile.findUnique({
+      where: { userName: userHandle }, // userName is @unique
+    });
+
+    if (!profile) {
+      return res.status(404).json({ error: "Profile not found" });
+    }
+
+    let isFollowing = false;
+    if (currentUserId && currentUserId !== profile.userId) {
+      const follow = await prisma.follow.findUnique({
+        where: {
+          followerId_followingId: {
+            followerId: currentUserId,
+            followingId: profile.userId,
+          },
+        },
+      });
+      isFollowing = !!follow;
+    }
+
+    // Public-safe shape. Private profiles still expose the header (name/avatar/
+    // counts) but the client hides posts; expand here later if needed.
+    return res.json({
+      success: true,
+      profile: {
+        userId: profile.userId,
+        userName: profile.userName,
+        bio: profile.bio,
+        avatar: profile.avatarUrl,
+        coverImage: profile.coverPhotoUrl,
+        website: profile.website,
+        location: profile.location,
+        isPrivate: profile.isPrivate,
+        isVerified: profile.isVerified,
+        followersCount: profile.followersCount,
+        followingCount: profile.followingCount,
+        postCount: profile.postCount,
+        isFollowing,
+      },
+    });
+  } catch (error: any) {
+    console.error("getPublicProfileByHandle error:", error);
+    return res
+      .status(500)
+      .json({ error: "Failed to fetch profile", message: error.message });
+  }
+};
+
 export default {
   createPost,
   getForYouFeed,
@@ -936,4 +1051,6 @@ export default {
   checkLikeStatus,
   getSavedPosts,
   toggleSavePost,
+  getPostById,              // ← add
+  getPublicProfileByHandle, // ← add
 };
