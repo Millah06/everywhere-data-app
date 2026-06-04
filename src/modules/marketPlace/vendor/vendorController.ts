@@ -58,6 +58,7 @@ const getVendorById = async (req: any, res: any) => {
       include: {
         branches: { include: { deliveryZones: true } },
         reviews: true,
+        trustProfile: { select: { level: true } }
       },
     });
 

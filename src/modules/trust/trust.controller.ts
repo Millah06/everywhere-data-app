@@ -38,6 +38,10 @@ import {
   UNLIMITED_DAILY_LIMIT,
   ensureTrustProfile,
 } from "../marketPlace/settlement/settlement.rules";
+import {
+  buildTrustLevelCatalog,
+  type CatalogOverrides,
+} from "./trust.catalog";
 
 // Fee for Level 3 (Business) verification, in Naira.
 const VERIFICATION_FEE = 2500;
@@ -223,13 +227,39 @@ function serializeProfile(
   stats: VendorTrustStats,
   hasCacDoc: boolean,
   pendingRequest: any | null,
+  catalogOverrides: CatalogOverrides | null = null,
 ) {
   const rule = rulesForLevel(profile.level);
   const next = nextLevelRequirements(profile, stats, hasCacDoc);
   if (next && pendingRequest && pendingRequest.toLevel === next.level) {
     next.pendingAdminReview = pendingRequest.status === "pending";
   }
+
+  // Full 0→3 catalog so the app can show a comparison of EVERY level's
+  // requirements + benefits, with this merchant's progress ticked against each.
+  // Single source of truth lives in trust.catalog.ts (admin-overridable).
+  const levels = buildTrustLevelCatalog(
+    {
+      currentLevel: profile.level,
+      totalCompletedOrders: stats.totalCompletedOrders,
+      disputeRatePercent: stats.disputeRatePercent,
+      accountAgeDays: stats.accountAgeDays,
+      hasCacDocument: hasCacDoc,
+      verificationFeePaid: profile.verificationFeePaid,
+    },
+    {
+      l2MinCompletedOrders: L2_MIN_COMPLETED_ORDERS,
+      l2MaxDisputeRate: L2_MAX_DISPUTE_RATE,
+      l2MinAccountAgeDays: L2_MIN_ACCOUNT_AGE_DAYS,
+      l3MinCompletedOrders: L3_MIN_COMPLETED_ORDERS,
+      l3MaxDisputeRate: L3_MAX_DISPUTE_RATE,
+      verificationFee: VERIFICATION_FEE,
+    },
+    catalogOverrides,
+  );
+
   return {
+    levels,
     level: profile.level,
     levelLabel: LEVEL_LABELS[profile.level] ?? "Unverified",
     canSell: rule.canSell,
@@ -279,7 +309,20 @@ const getTrustStatus = async (req: any, res: any) => {
       orderBy: { createdAt: "desc" },
     });
 
-    res.json(serializeProfile(profile, stats, hasCacDoc, pendingRequest));
+    // Optional admin-edited overrides (no app release needed). Reads
+    // AppConfig.trustCatalog if that column exists; otherwise null → defaults.
+    // Defensive: a missing column simply yields undefined, never throws.
+    let overrides: CatalogOverrides | null = null;
+    try {
+      const cfg = await prisma.appConfig.findFirst();
+      overrides = ((cfg as any)?.trustCatalog as CatalogOverrides) ?? null;
+    } catch {
+      overrides = null;
+    }
+
+    res.json(
+      serializeProfile(profile, stats, hasCacDoc, pendingRequest, overrides),
+    );
   } catch (e: any) {
     // Most likely cause pre-migration: trust tables not present yet.
     res.status(400).json({ message: e.message });
