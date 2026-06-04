@@ -12,6 +12,7 @@ import CommunicationRouter from "../modules/communication/routes/routes";
 import searchRoutes from "../modules/search/routes/search.routes";
 import { optionalAuthMiddleware} from "../middleware/auth";
 import { getFollowers, getFollowing } from "../modules/search/controllers/search.controller";
+import trustRoutes from "../modules/trust/trust.routes";
 
 
 const router = Router();
@@ -29,6 +30,7 @@ router.use(CommunicationRouter);
 router.use('/search', searchRoutes);
 router.get('/users/:userId/followers', optionalAuthMiddleware, getFollowers);
 router.get('/users/:userId/following', optionalAuthMiddleware, getFollowing);
+router.use(trustRoutes);
 
 
 export default router;

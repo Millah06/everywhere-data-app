@@ -10,6 +10,11 @@ import {
 } from "../../../shared/utils/transactionResponse";
 import { FieldValue } from "firebase-admin/firestore";
 import { TX_TYPE } from "../../../shared/utils/transactionType";
+import {
+  getVendorSettlementDelayHours,
+  getVendorTrustLevel,
+  canSellAtLevel,
+} from "../settlement/settlement.rules";
 
 const notify = async (token: string, title: string, body: string) => {
   await sendNotification(token, title, body);
@@ -63,6 +68,16 @@ const placeOrder = async (req: any, res: any) => {
       return res
         .status(400)
         .json({ message: "Branch does not belong to this vendor" });
+
+    // Trust gate (spec §11): level-0 vendors cannot sell. Fail-open — any
+    // lookup error or missing profile defaults to ALLOW so ordering never
+    // breaks (e.g. before the gated migration, or for un-seeded vendors).
+    const sellerLevel = await getVendorTrustLevel(vendorId);
+    if (!canSellAtLevel(sellerLevel)) {
+      return res.status(403).json({
+        message: "This store is not yet verified to accept orders.",
+      });
+    }
 
     const zone = branch.deliveryZones.find(
       (z: any) => z.area === deliveryAddress.area,
@@ -182,6 +197,9 @@ const placeOrder = async (req: any, res: any) => {
     const commission = subtotal * (config.commissionPercent / 100);
 
     if (paymentMethod !== "pay_on_delivery") {
+      // Settlement delay is trust-based (spec §11). Fail-open: falls back to
+      // AppConfig.autoReleaseHours if the trust profile/table is unavailable.
+      const settlementHours = await getVendorSettlementDelayHours(vendorId);
       await prisma.escrow.create({
         data: {
           orderId: order.id,
@@ -189,7 +207,7 @@ const placeOrder = async (req: any, res: any) => {
           commission,
           releaseStatus: "held",
           autoReleaseAt: new Date(
-            Date.now() + config.autoReleaseHours * 60 * 60 * 1000,
+            Date.now() + settlementHours * 60 * 60 * 1000,
           ),
         },
       });
@@ -562,9 +580,10 @@ const cancelAppeal = async (req: any, res: any) => {
     if (order.status !== "appealed")
       return res.status(400).json({ message: "Order is not under appeal" });
 
-    // Restore auto-release window from now
-    const config = await prisma.appConfig.findFirst();
-    const hours = config?.autoReleaseHours ?? 24;
+  
+    // Restore auto-release window from now, using the vendor's trust-based
+    // settlement delay (fail-open to AppConfig.autoReleaseHours).
+    const hours = await getVendorSettlementDelayHours(order.vendorId);
     const autoReleaseAt = new Date(Date.now() + hours * 60 * 60 * 1000);
 
     if (order.paymentMethod == "pay_on_delivery") {

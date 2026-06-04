@@ -398,6 +398,64 @@ export class WalletService {
     });
   }
 
+  /**
+   * Charge a fixed platform fee against the wallet's AVAILABLE balance.
+   * Atomic: guards balance, decrements Fiat.availableBalance, writes one debit
+   * Transaction. Idempotent when `clientRequestId` is supplied — a second call
+   * with the same id is a no-op that returns the original transaction (guards
+   * accidental double-taps / retries). Used by the Business verification fee.
+   * Throws "Insufficient balance" if the wallet can't cover the amount.
+   */
+  static async chargeWalletForFee(input: {
+    userId: string;
+    amount: number;
+    type: TxType;
+    clientRequestId?: string;
+    humanRef?: string;
+    metaData?: Prisma.JsonObject;
+  }) {
+    const { userId, amount, type, clientRequestId, humanRef, metaData } = input;
+    if (amount <= 0) throw new Error("Invalid fee amount");
+
+    return prisma.$transaction(async (tx) => {
+      // Idempotency: if this exact request already produced a tx, return it.
+      if (clientRequestId) {
+        const dup = await tx.transaction.findUnique({
+          where: { clientRequestId },
+        });
+        if (dup) return { idempotent: true as const, transaction: dup };
+      }
+
+      const { fiat } = await this.ensureWalletWithFiat(tx, userId);
+      if (fiat.availableBalance < amount) {
+        throw new Error("Insufficient balance");
+      }
+
+      await tx.fiat.update({
+        where: { id: fiat.id },
+        data: { availableBalance: { decrement: amount } },
+      });
+
+      const transaction = await tx.transaction.create({
+        data: {
+          userId,
+          type,
+          amount,
+          status: TransactionStatus.success,
+          clientRequestId: clientRequestId ?? null,
+          humanRef: humanRef ?? null,
+          transactionRef: this.generateTransactionRef(),
+          metaData: {
+            ...(metaData ?? {}),
+            direction: "debit",
+          },
+        },
+      });
+
+      return { idempotent: false as const, transaction };
+    });
+  }
+
   /** Wallet → wallet: atomic transfer + transfer row + two tx rows (success). */
   static async executeInternalWalletTransfer(input: {
     senderId: string;

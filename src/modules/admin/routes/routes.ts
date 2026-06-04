@@ -6,6 +6,7 @@ import analyticsController from "../controllers/analytics.controller";
 import transactionsController from "../controllers/transactions.controller";
 import marketPlaceController from "../controllers/marketPlace.controller";
 import supportChatController from "../controllers/supportChat.controller";
+import trustController from "../../trust/trust.controller";
 
 
 const router = Router();
@@ -127,6 +128,25 @@ router.get("/admin/config", authMiddleware,
   requireAdmin, marketPlaceController.getConfig);
 router.patch("/admin/config", authMiddleware,
   requireAdmin, marketPlaceController.updateConfig);
+
+  router.get(
+  "/admin/trust/pending",
+  authMiddleware,
+  requireAdmin,
+  trustController.getPendingTrust,
+);
+router.post(
+  "/admin/trust/:vendorId/approve",
+  authMiddleware,
+  requireAdmin,
+  trustController.approveTrust,
+);
+router.post(
+  "/admin/trust/:vendorId/reject",
+  authMiddleware,
+  requireAdmin,
+  trustController.rejectTrust,
+);
 
 
 // ── SUPPORT CHAT ─────────────────────────────────────────────────────────────

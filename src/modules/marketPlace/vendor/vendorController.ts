@@ -17,7 +17,9 @@ const getVendors = async (req: any, res: any) => {
 
     const vendors = await prisma.vendor.findMany({
       where,
-      include: { branches: { include: { deliveryZones: true } } },
+      include: { branches: { include: { deliveryZones: true } } , 
+      trustProfile: { select: { level: true } }},
+// then in the response shape: trustLevel: vendor.trustProfile?.level ?? null
     });
 
     const maxOrders = Math.max(

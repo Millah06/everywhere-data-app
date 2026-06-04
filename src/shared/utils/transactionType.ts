@@ -27,6 +27,8 @@ export const TX_TYPE = {
   
   ORDER_REFUND:     "order_refund",
 
+  VERIFICATION_FEE: "verification_fee",
+
   // ── Gifts ─────────────────────────────────────────────────────────────────
   GIFT:             "gift",
 
