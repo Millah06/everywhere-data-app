@@ -16,7 +16,7 @@
 
 import { prisma } from "../../../prisma";
 import { WalletService } from "../../../shared/services/wallet.service";
-import { TX_TYPE } from "../../../shared/utils/transactionType";
+import { TX_TYPE, TxType } from "../../../shared/utils/transactionType";
 import { generateUUID } from "../../../shared/utils/uuid";
 import { calculateTransaction } from "../../utility/helpers/calculateTransaction";
 import type { Prisma } from "@prisma/client";
@@ -158,6 +158,7 @@ export async function debitWalletForUtility(input: {
   clientRequestId: string;
   humanRef?: string;
   metaData?: Prisma.JsonObject;
+  service: string;
 }): Promise<UtilityDebitResult> {
   return prisma.$transaction(async (tx) => {
     const existing = await tx.transaction.findUnique({
@@ -202,10 +203,34 @@ export async function debitWalletForUtility(input: {
       rewardToAdd: calc.rewardToAdd,
     };
 
+    // Map utility service to correct TX_TYPE
+    let txType: TxType = TX_TYPE.ORDER_PAYMENT; // fallback
+    switch (input.service.toLowerCase()) {
+      case "airtime":
+        txType = TX_TYPE.AIRTIME;
+        break;
+      case "data":
+        txType = TX_TYPE.DATA;
+        break;
+      case "electricity":
+        txType = TX_TYPE.ELECTRICITY;
+        break;
+      case "cable":
+        txType = TX_TYPE.CABLE;
+        break;
+      case "waec":
+      case "waec_reg":
+        txType = TX_TYPE.WAEC_REG;
+        break;
+      case "waec_result":
+        txType = TX_TYPE.WAEC_RESULT;
+        break;
+    }
+
     const txRow = await tx.transaction.create({
       data: {
         userId: input.userId,
-        type: TX_TYPE.ORDER_PAYMENT,
+        type: txType,
         amount: walletToDeduct,
         status: "success",
         clientRequestId: input.clientRequestId,

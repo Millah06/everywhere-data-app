@@ -265,6 +265,7 @@ async function createPayment(req: any, res: any, forcedProvider?: string) {
           clientRequestId,
           humanRef: productName,
           metaData: { paymentId: payment.id, entityType, entityId },
+          service: meta?.service || "",
         });
         debit = u;
         if (u.ok && u.rewardPlan) {

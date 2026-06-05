@@ -26,9 +26,9 @@ import { nanoid } from "nanoid";
 // See PHASE5_OPAY_SETUP.md for where to find each one in the OPay dashboard.
 // ─────────────────────────────────────────────────────────────────────────────
 const OPAY_ENV = (process.env.OPAY_ENV || "sandbox").toLowerCase(); // "sandbox" | "production"
-const OPAY_PUBLIC_KEY = process.env.OPAY_PUBLIC_KEY || "REPLACE_WITH_OPAY_PUBLIC_KEY";
+const OPAY_PUBLIC_KEY = process.env.OPAY_PUBLIC_KEY || "OPAYPUB17795318006960.42281797604856775";
 const OPAY_SECRET_KEY = process.env.OPAY_SECRET_KEY || "REPLACE_WITH_OPAY_PRIVATE_KEY"; // HMAC key — the OPAYPRV... key
-const OPAY_MERCHANT_ID = process.env.OPAY_MERCHANT_ID || "REPLACE_WITH_OPAY_MERCHANT_ID";
+const OPAY_MERCHANT_ID = process.env.OPAY_MERCHANT_ID || "256626052384533";
 const OPAY_DISPLAY_NAME = process.env.OPAY_DISPLAY_NAME || "Amrili Digital Services Limited";
 
 // The verified-working host is testapi/liveapi.opaycheckout.com (see the
@@ -113,7 +113,7 @@ export async function createCashier(input: OpayCreateInput): Promise<OpayCreateR
       name: input.productName,
       description: input.productDescription || input.productName,
     },
-    payMethod: process.env.OPAY_PAY_METHOD || "BankCard", // BankCard | OpayWalletNg | BankTransfer ...
+    payMethod: process.env.OPAY_PAY_METHOD || "OpayWalletNg", // BankCard | OpayWalletNg | BankTransfer ...
     country: "NG",
   };
 
@@ -236,8 +236,8 @@ export function newOpayReference(): string {
 export const OPAY_CONFIG_SUMMARY = {
   env: OPAY_ENV,
   baseUrl: OPAY_BASE_URL,
-  merchantIdSet: OPAY_MERCHANT_ID !== "REPLACE_WITH_OPAY_MERCHANT_ID",
-  publicKeySet: OPAY_PUBLIC_KEY !== "REPLACE_WITH_OPAY_PUBLIC_KEY",
+  merchantIdSet: OPAY_MERCHANT_ID !== "256626052384533",
+  publicKeySet: OPAY_PUBLIC_KEY !== "OPAYPUB17795318006960.42281797604856775",
   secretKeySet: OPAY_SECRET_KEY !== "REPLACE_WITH_OPAY_PRIVATE_KEY",
   amountInMinorUnit: AMOUNT_IN_MINOR_UNIT,
 };
