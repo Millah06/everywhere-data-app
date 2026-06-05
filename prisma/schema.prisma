@@ -769,6 +769,8 @@ model AppConfig {
   bonusElectric         Float  @default(0)
 
   autoCancelMinutes Int @default(30)
+
+  trustCatalog Json?   // admin override: { "3": { "benefits": [...], "tagline": "..." } }
 }
 
 model LocationState {

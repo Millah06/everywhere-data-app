@@ -233,8 +233,12 @@ export function buildTrustLevelCatalog(
   t: CatalogThresholds,
   overrides: CatalogOverrides | null = null,
 ): CatalogLevel[] {
+  // Defensively sanitise whatever was passed (DB JSON, admin body, etc.) so a
+  // malformed override can never produce a bad payload for the app.
+  const safe = overrides ? sanitizeCatalogOverrides(overrides) : null;
+
   return [0, 1, 2, 3].map((level) => {
-    const o = overrides?.[level] ?? {};
+    const o = safe?.[level] ?? {};
     const rule = rulesForLevel(level);
 
     let requirements = requirementsForLevel(level, ctx, t);
@@ -261,21 +265,114 @@ export function buildTrustLevelCatalog(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// OPTIONAL — make the catalog admin-editable at runtime (no app release):
-//
-// 1) Add an optional JSON column to AppConfig (additive migration):
-//      // prisma/schema.prisma — model AppConfig
-//      trustCatalog Json?   // { "3": { "benefits": ["...","..."], "tagline": "..." } }
-//
-// 2) In getTrustStatus, read it and pass it through:
-//      const cfg = await prisma.appConfig.findFirst();
-//      const overrides = (cfg?.trustCatalog as CatalogOverrides) ?? null;
-//      ... serializeProfile(profile, stats, hasCacDoc, pendingRequest, overrides)
-//
-// 3) Expose an admin endpoint to PATCH AppConfig.trustCatalog.
-//
-// Until that column exists, buildTrustLevelCatalog uses the defaults above, and
-// editing the defaults + redeploying is the way to change copy. The override
-// path is wired and ready (serializeProfile already forwards an overrides arg),
-// so flipping to fully DB-driven later is a two-line change.
+// Admin editing support (runtime, no app release)
 // ─────────────────────────────────────────────────────────────────────────────
+// The catalog is now editable at runtime via AppConfig.trustCatalog (a Json?
+// column — see the `add_trust_catalog` migration). The admin endpoints in
+// trust.controller.ts (GET/PUT /admin/trust/catalog) use the helpers below:
+//   • sanitizeCatalogOverrides — strips anything that isn't a valid override so
+//     a bad PUT (or stale DB value) can never break the merchant payload.
+//   • getCatalogDefaults — the editable default copy per level, so an admin UI
+//     can pre-fill a form and show exactly what each field overrides.
+// buildTrustLevelCatalog() already sanitises its overrides arg internally, so
+// reads are safe regardless of what's stored.
+
+const VALID_LEVELS = [0, 1, 2, 3];
+
+/**
+ * Coerce arbitrary input (admin request body or DB JSON) into a clean
+ * CatalogOverrides. Unknown levels and unknown/!-typed fields are dropped.
+ * Returns `{}` if nothing valid is present.
+ */
+export function sanitizeCatalogOverrides(input: unknown): CatalogOverrides {
+  const out: CatalogOverrides = {};
+  if (!input || typeof input !== "object") return out;
+
+  for (const [rawKey, rawVal] of Object.entries(input as Record<string, unknown>)) {
+    const level = Number(rawKey);
+    if (!VALID_LEVELS.includes(level)) continue;
+    if (!rawVal || typeof rawVal !== "object") continue;
+
+    const v = rawVal as Record<string, unknown>;
+    const clean: CatalogLevelOverride = {};
+
+    if (typeof v.label === "string" && v.label.trim()) {
+      clean.label = v.label.trim().slice(0, 120);
+    }
+    if (typeof v.tagline === "string" && v.tagline.trim()) {
+      clean.tagline = v.tagline.trim().slice(0, 280);
+    }
+    if (Array.isArray(v.benefits)) {
+      const benefits = v.benefits
+        .filter((b): b is string => typeof b === "string" && b.trim().length > 0)
+        .map((b) => b.trim().slice(0, 200))
+        .slice(0, 12); // cap list length
+      if (benefits.length) clean.benefits = benefits;
+    }
+    if (v.requirementLabels && typeof v.requirementLabels === "object") {
+      const labels: Record<string, string> = {};
+      for (const [k, lbl] of Object.entries(
+        v.requirementLabels as Record<string, unknown>,
+      )) {
+        if (typeof lbl === "string" && lbl.trim()) {
+          labels[k] = lbl.trim().slice(0, 200);
+        }
+      }
+      if (Object.keys(labels).length) clean.requirementLabels = labels;
+    }
+
+    if (Object.keys(clean).length) out[level] = clean;
+  }
+
+  return out;
+}
+
+/** A neutral context (no merchant) used to render copy-only catalog previews. */
+function neutralContext(): CatalogContext {
+  return {
+    currentLevel: -1, // nothing "attained" → requirement labels still correct
+    totalCompletedOrders: 0,
+    disputeRatePercent: 0,
+    accountAgeDays: 0,
+    hasCacDocument: false,
+    verificationFeePaid: false,
+  };
+}
+
+export interface CatalogDefaultLevel {
+  level: number;
+  label: string;
+  tagline: string;
+  benefits: string[];
+  /** Editable requirement labels keyed by their stable key. */
+  requirementLabels: Record<string, string>;
+}
+
+/**
+ * The editable DEFAULT copy per level (no overrides applied), so an admin UI can
+ * render a pre-filled form and know which keys/fields are overridable. Thresholds
+ * are passed so requirement labels read with the real numbers.
+ */
+export function getCatalogDefaults(t: CatalogThresholds): CatalogDefaultLevel[] {
+  const ctx = neutralContext();
+  return VALID_LEVELS.map((level) => {
+    const reqs = requirementsForLevel(level, ctx, t);
+    const requirementLabels: Record<string, string> = {};
+    for (const r of reqs) requirementLabels[r.key] = r.label;
+    return {
+      level,
+      label: DEFAULT_LABELS[level] ?? `Level ${level}`,
+      tagline: DEFAULT_TAGLINES[level] ?? "",
+      benefits: DEFAULT_BENEFITS[level] ?? [],
+      requirementLabels,
+    };
+  });
+}
+
+/** Copy-only catalog (uses a neutral merchant) for admin "effective" preview. */
+export function buildCatalogPreview(
+  t: CatalogThresholds,
+  overrides: CatalogOverrides | null,
+): CatalogLevel[] {
+  return buildTrustLevelCatalog(neutralContext(), t, overrides);
+}

@@ -40,7 +40,11 @@ import {
 } from "../marketPlace/settlement/settlement.rules";
 import {
   buildTrustLevelCatalog,
+  buildCatalogPreview,
+  getCatalogDefaults,
+  sanitizeCatalogOverrides,
   type CatalogOverrides,
+  type CatalogThresholds,
 } from "./trust.catalog";
 
 // Fee for Level 3 (Business) verification, in Naira.
@@ -54,6 +58,17 @@ export const L2_MIN_ACCOUNT_AGE_DAYS = 60;
 // Level-3 (Business) thresholds (admin still has the final say).
 export const L3_MIN_COMPLETED_ORDERS = 200;
 export const L3_MAX_DISPUTE_RATE = 2; // percent
+
+// Single thresholds object reused by serializeProfile + the admin catalog
+// endpoints, so the numbers shown to merchants never diverge from the gating.
+const TRUST_THRESHOLDS: CatalogThresholds = {
+  l2MinCompletedOrders: L2_MIN_COMPLETED_ORDERS,
+  l2MaxDisputeRate: L2_MAX_DISPUTE_RATE,
+  l2MinAccountAgeDays: L2_MIN_ACCOUNT_AGE_DAYS,
+  l3MinCompletedOrders: L3_MIN_COMPLETED_ORDERS,
+  l3MaxDisputeRate: L3_MAX_DISPUTE_RATE,
+  verificationFee: VERIFICATION_FEE,
+};
 
 const LEVEL_LABELS: Record<number, string> = {
   0: "Unverified",
@@ -247,14 +262,7 @@ function serializeProfile(
       hasCacDocument: hasCacDoc,
       verificationFeePaid: profile.verificationFeePaid,
     },
-    {
-      l2MinCompletedOrders: L2_MIN_COMPLETED_ORDERS,
-      l2MaxDisputeRate: L2_MAX_DISPUTE_RATE,
-      l2MinAccountAgeDays: L2_MIN_ACCOUNT_AGE_DAYS,
-      l3MinCompletedOrders: L3_MIN_COMPLETED_ORDERS,
-      l3MaxDisputeRate: L3_MAX_DISPUTE_RATE,
-      verificationFee: VERIFICATION_FEE,
-    },
+    TRUST_THRESHOLDS,
     catalogOverrides,
   );
 
@@ -610,6 +618,62 @@ const rejectTrust = async (req: any, res: any) => {
   }
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Admin: trust level catalog (runtime-editable copy, no app release)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GET /admin/trust/catalog — returns the editable defaults, the current saved
+// overrides, and the effective (merged) copy so an admin UI can render a form.
+const getTrustCatalog = async (_req: any, res: any) => {
+  try {
+    let overrides: CatalogOverrides = {};
+    try {
+      const cfg = await prisma.appConfig.findFirst();
+      overrides = sanitizeCatalogOverrides((cfg as any)?.trustCatalog ?? {});
+    } catch {
+      overrides = {};
+    }
+
+    res.json({
+      defaults: getCatalogDefaults(TRUST_THRESHOLDS), // pre-fill / reset target
+      overrides, // what's currently saved
+      effective: buildCatalogPreview(TRUST_THRESHOLDS, overrides), // what merchants see (copy)
+      thresholds: TRUST_THRESHOLDS, // numbers live in code (changing them is a deploy)
+    });
+  } catch (e: any) {
+    res.status(400).json({ message: e.message });
+  }
+};
+
+// PUT /admin/trust/catalog — save overrides. Body may be the overrides object
+// directly, or { trustCatalog: {...} }. Anything invalid is stripped. Send {}
+// (or { trustCatalog: {} }) to reset back to the code defaults.
+const updateTrustCatalog = async (req: any, res: any) => {
+  try {
+    const raw = req.body?.trustCatalog ?? req.body ?? {};
+    const clean = sanitizeCatalogOverrides(raw);
+
+    const cfg = await prisma.appConfig.findFirst();
+    if (!cfg) {
+      // AppConfig is a singleton; create it if an admin hasn't seeded it yet.
+      await prisma.appConfig.create({ data: { trustCatalog: clean } as any });
+    } else {
+      await prisma.appConfig.update({
+        where: { id: cfg.id },
+        data: { trustCatalog: clean } as any,
+      });
+    }
+
+    res.json({
+      message: "Trust catalog updated.",
+      overrides: clean,
+      effective: buildCatalogPreview(TRUST_THRESHOLDS, clean),
+    });
+  } catch (e: any) {
+    res.status(400).json({ message: e.message });
+  }
+};
+
 export default {
   getTrustStatus,
   submitIdentity,
@@ -617,4 +681,6 @@ export default {
   getPendingTrust,
   approveTrust,
   rejectTrust,
+  getTrustCatalog,
+  updateTrustCatalog,
 };

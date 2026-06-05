@@ -13,6 +13,9 @@ import searchRoutes from "../modules/search/routes/search.routes";
 import { optionalAuthMiddleware} from "../middleware/auth";
 import { getFollowers, getFollowing } from "../modules/search/controllers/search.controller";
 import trustRoutes from "../modules/trust/trust.routes";
+import paymentRoutes from "../modules/payment/payment.routes";
+import "../modules/payment/payment.routes";      // (already added in PHASE5_EDITS EDIT 1)
+import "../modules/utility/utility.handler";      // ← registers the "utility" handler
 
 
 const router = Router();
@@ -31,6 +34,6 @@ router.use('/search', searchRoutes);
 router.get('/users/:userId/followers', optionalAuthMiddleware, getFollowers);
 router.get('/users/:userId/following', optionalAuthMiddleware, getFollowing);
 router.use(trustRoutes);
-
+router.use(paymentRoutes);
 
 export default router;

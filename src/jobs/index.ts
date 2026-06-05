@@ -4,6 +4,7 @@ import {
   runAutoReleaseJob,
 } from "../modules/marketPlace/escow/autoReleaseJob";
 import { runTrustUpgradeJob } from "../modules/trust/trust.cron";
+import { runPaymentRecoveryJob } from "./paymentRecovery";
 
 export const startJobs = () => {
   cron.schedule("0 * * * *", async () => {
@@ -19,6 +20,13 @@ export const startJobs = () => {
   // columns. Migration-safe no-op until the trust table exists.
   cron.schedule("0 2 * * *", async () => {
     await runTrustUpgradeJob();
+  });
+
+  // Payment recovery (spec §13): re-query stuck OPay payments, expire stale
+  // CREATED sessions, retry failed dispatch. Migration-safe no-op until the
+  // Payment table exists.
+  cron.schedule("*/5 * * * *", async () => {
+    await runPaymentRecoveryJob();
   });
   
 };

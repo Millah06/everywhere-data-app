@@ -148,6 +148,19 @@ router.post(
   trustController.rejectTrust,
 );
 
+router.get(
+  "/admin/trust/catalog",
+  authMiddleware,
+  requireAdmin,
+  trustController.getTrustCatalog,
+);
+router.put(
+  "/admin/trust/catalog",
+  authMiddleware,
+  requireAdmin,
+  trustController.updateTrustCatalog,
+);
+
 
 // ── SUPPORT CHAT ─────────────────────────────────────────────────────────────
 // These routes are protected by auth middleware. Add role checks in each

@@ -29,6 +29,37 @@ const VTpassWebhook = async (req: any, res: any) => {
       },
     });
 
+    // Engine utility payments: requestId == Payment.id. Resolve those here too.
+    if (!row) {
+      const payment = await prisma.payment.findUnique({ where: { id: transactionRef } }).catch(() => null);
+      if (payment) {
+        const statusStr = data.content?.transactions?.status;
+        const delivered = statusStr === "delivered";
+        const pm = (payment.providerMeta as any) ?? {};
+        if (delivered) {
+          await prisma.payment.update({
+            where: { id: payment.id },
+            data: { providerMeta: { ...pm, delivery: { ...(pm.delivery ?? {}), status: "delivered" } } },
+          });
+        } else {
+          // Refund to wallet (works for wallet- and OPay-paid utilities).
+          const fiat = await prisma.fiat.findFirst({ where: { wallet: { userId: payment.userId } } });
+          if (fiat) {
+            await prisma.fiat.update({
+              where: { id: fiat.id },
+              data: { availableBalance: { increment: payment.amount } },
+            });
+          }
+          await prisma.payment.update({
+            where: { id: payment.id },
+            data: { providerMeta: { ...pm, delivery: { ...(pm.delivery ?? {}), status: "refunded", reason: "vtpass_failed_async" } } },
+          });
+        }
+        res.status(200).json({ response: "success" });
+        return;
+      }
+    }
+
     if (!row) {
       console.error("Transaction not found for ref:", transactionRef);
       res.status(404).send("Transaction not found");

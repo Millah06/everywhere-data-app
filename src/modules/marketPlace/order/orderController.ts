@@ -134,6 +134,30 @@ const placeOrder = async (req: any, res: any) => {
         .json({ message: "This vendor does not accept pay on delivery" });
     }
 
+    // ── OPay-paid order (payment engine) ──────────────────────────────────────
+    // Additive branch: skip the wallet lock; create the order in `pending` and
+    // let the payment engine confirm it on SUCCESS (handler creates escrow).
+    if (paymentMethod === "opay") {
+      const order = await prisma.order.create({
+        data: {
+          userId,
+          userName: user?.name?.split(" ")[0] || "User",
+          vendorId,
+          branchId,
+          subtotal,
+          deliveryFee,
+          transactionFee,
+          totalAmount,
+          status: "pending",
+          escrowStatus: "noEscrow",       // escrow created by the engine on SUCCESS
+          paymentMethod: "opay",
+          // …copy the SAME snapshot fields (items, delivery address, etc.) that
+          //   the existing `prisma.order.create` below sets — keep them identical.
+        },
+      });
+      return res.json({ orderId: order.id, requiresPayment: true, totalAmount });
+    }
+
     const transactionRef = generateUUID();
     const lockClientId = clientRequestId || transactionRef;
 
