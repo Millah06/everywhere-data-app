@@ -40,11 +40,11 @@ function publicPayment(p: any) {
     currency: p.currency,
     entityType: p.entityType,
     entityId: p.entityId,
-    cashierUrl: (p.providerMeta && p.providerMeta.cashierUrl) || null,
-    dispatchError: (p.providerMeta && p.providerMeta.dispatchError) || null,
+    cashierUrl: ((p.providerMeta as any)?.cashierUrl) || null,
+    dispatchError: ((p.providerMeta as any)?.dispatchError) || null,
     // Delivery result (utility token/PIN/status) so the client can show a
     // receipt instantly without a trip to transaction history.
-    delivery: (p.providerMeta && p.providerMeta.delivery) || null,
+    delivery: ((p.providerMeta as any)?.delivery) || null,
     createdAt: p.createdAt,
     updatedAt: p.updatedAt,
   };
@@ -85,8 +85,8 @@ async function recordAttempt(
 async function setStatus(payment: any, to: PaymentStatus, extraMeta?: any) {
   assertTransition(payment.status, to);
   const providerMeta = extraMeta
-    ? { ...(payment.providerMeta ?? {}), ...extraMeta }
-    : payment.providerMeta;
+    ? { ...((payment.providerMeta as any) ?? {}), ...extraMeta }
+    : ((payment.providerMeta as any) ?? undefined);
   return prisma.payment.update({
     where: { id: payment.id },
     data: { status: to, providerMeta },
@@ -116,10 +116,10 @@ async function fulfill(payment: any): Promise<any> {
     const fresh = await prisma.payment.findUnique({ where: { id: p.id } });
     if (fresh) p = fresh;
     // clear any prior dispatch error
-    if (p.providerMeta?.dispatchError) {
+    if ((p.providerMeta as any)?.dispatchError) {
       p = await prisma.payment.update({
         where: { id: p.id },
-        data: { providerMeta: { ...(p.providerMeta ?? {}), dispatchError: null } },
+        data: { providerMeta: { ...((p.providerMeta as any) ?? {}), dispatchError: null } },
       });
     }
   } catch (err: any) {
@@ -127,7 +127,7 @@ async function fulfill(payment: any): Promise<any> {
       where: { id: p.id },
       data: {
         providerMeta: {
-          ...(p.providerMeta ?? {}),
+          ...((p.providerMeta as any) ?? {}),
           dispatchError: String(err?.message || err),
         },
       },
@@ -270,7 +270,7 @@ async function createPayment(req: any, res: any, forcedProvider?: string) {
         if (u.ok && u.rewardPlan) {
           payment = await prisma.payment.update({
             where: { id: payment.id },
-            data: { providerMeta: { ...(payment.providerMeta ?? {}), rewardPlan: u.rewardPlan } },
+            data: { providerMeta: { ...((payment.providerMeta as any) ?? {}), rewardPlan: u.rewardPlan } },
           });
         }
       } else {
@@ -303,7 +303,7 @@ async function createPayment(req: any, res: any, forcedProvider?: string) {
       // dispatch is also idempotent so this rarely fires).
       try {
         payment = await fulfill(payment);
-        if (payment.providerMeta?.dispatchError) {
+        if ((payment.providerMeta as any)?.dispatchError) {
           // Dispatch failed (e.g. no handler yet) → refund so no money is stranded.
           // For utility, refund the actual amount debited (reward-adjusted).
           const refundAmount =
@@ -349,7 +349,7 @@ async function createPayment(req: any, res: any, forcedProvider?: string) {
           status: PAYMENT_STATUS.PENDING,
           providerRef: created.orderNo ?? payment.id,
           providerMeta: {
-            ...(payment.providerMeta ?? {}),
+            ...((payment.providerMeta as any) ?? {}),
             cashierUrl: created.cashierUrl,
             opayOrderNo: created.orderNo ?? null,
           },
