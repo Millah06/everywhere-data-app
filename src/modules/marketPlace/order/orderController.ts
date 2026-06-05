@@ -149,13 +149,25 @@ const placeOrder = async (req: any, res: any) => {
           transactionFee,
           totalAmount,
           status: "pending",
-          escrowStatus: "noEscrow",       // escrow created by the engine on SUCCESS
+          escrowStatus: "noEscrow", // escrow created by the engine on SUCCESS
           paymentMethod: "opay",
+          deliveryState: deliveryAddress.state,
+          deliveryLga: deliveryAddress.lga,
+          deliveryArea: deliveryAddress.area,
+          deliveryStreet: deliveryAddress.street,
+          vendorName: branch.vendor.name,
+          vendorLogo: branch.vendor.logo,
+          branchName: `${branch.area}, ${branch.lga}`,
+          items: { create: enrichedItems },
           // …copy the SAME snapshot fields (items, delivery address, etc.) that
           //   the existing `prisma.order.create` below sets — keep them identical.
         },
       });
-      return res.json({ orderId: order.id, requiresPayment: true, totalAmount });
+      return res.json({
+        orderId: order.id,
+        requiresPayment: true,
+        totalAmount,
+      });
     }
 
     const transactionRef = generateUUID();
@@ -604,7 +616,6 @@ const cancelAppeal = async (req: any, res: any) => {
     if (order.status !== "appealed")
       return res.status(400).json({ message: "Order is not under appeal" });
 
-  
     // Restore auto-release window from now, using the vendor's trust-based
     // settlement delay (fail-open to AppConfig.autoReleaseHours).
     const hours = await getVendorSettlementDelayHours(order.vendorId);
