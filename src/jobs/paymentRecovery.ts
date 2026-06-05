@@ -11,6 +11,7 @@
 // migration), every query throws P2021 and we no-op quietly — exactly like the
 // trust cron.
 
+import { Prisma } from "@prisma/client";
 import { prisma } from "../prisma";
 import {
   PAYMENT_STATUS,
@@ -56,13 +57,15 @@ export const runPaymentRecoveryJob = async () => {
     });
 
     // 3) Retry dispatch for SUCCESS payments whose handler errored earlier.
-    const needsDispatch = await prisma.payment.findMany({
-      where: {
-        status: PAYMENT_STATUS.SUCCESS,
-        NOT: { providerMeta: { equals: null } },
+  const needsDispatch = await prisma.payment.findMany({
+    where: {
+      status: PAYMENT_STATUS.SUCCESS,
+      providerMeta: {
+        not: Prisma.AnyNull,
       },
-      take: 50,
-    });
+    },
+    take: 50,
+  });
     for (const p of needsDispatch) {
       if (!(p.providerMeta as any)?.dispatchError) continue;
       try {

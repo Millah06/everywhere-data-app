@@ -69,14 +69,14 @@ function classify(raw: string | undefined): DeliveryStatus {
 
 function apiKeyHeaders() {
   return {
-    "api-key": process.env.VTPASS_API_KEY,
-    "secret-key": process.env.VTPASS_SECRET_KEY,
+    "api-key": process.env.VTPASS_API_KEY ?? "",
+    "secret-key": process.env.VTPASS_SECRET_KEY ?? "",
   };
 }
 
 function basicAuthHeaders() {
   const auth = Buffer.from(
-    `${process.env.VTPASS_USERNAME}:${process.env.VTPASS_PASSWORD}`,
+    `${process.env.VTPASS_USERNAME ?? ""}:${process.env.VTPASS_PASSWORD ?? ""}`,
   ).toString("base64");
   return { Authorization: `Basic ${auth}` };
 }
@@ -84,7 +84,7 @@ function basicAuthHeaders() {
 // Build the exact VTPass body + headers for each service.
 function buildRequest(r: UtilityRequest, requestId: string): {
   body: Record<string, unknown>;
-  headers: Record<string, unknown>;
+  headers: Record<string, string>;
 } {
   switch (r.service) {
     case "airtime":
@@ -192,7 +192,7 @@ export async function deliverUtility(
 
   let vendorResponse: any;
   try {
-    const resp = await axios.post(VT_PAY, body, { headers, timeout: 20000 });
+    const resp = await axios.post(VT_PAY, body, { headers: headers as any, timeout: 20000 });
     vendorResponse = resp.data;
   } catch (err: any) {
     return { status: "failed", vendorResponse: { error: err?.message }, productName: r.productName };
