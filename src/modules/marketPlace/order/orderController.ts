@@ -16,6 +16,25 @@ import {
   canSellAtLevel,
 } from "../settlement/settlement.rules";
 
+import {
+  releaseHold,
+  freezeHold,
+  unfreezeHold,
+  refundHold,
+  settlementTablesReady,
+} from "../settlement/settlement.service";
+
+/**
+ * Phase 6: true when this order uses the new settlement-hold model. Legacy
+ * in-flight orders (no hold, has an Escrow row) return false and keep the old
+ * money paths below — a clean, drain-on-its-own cutover.
+ */
+async function hasSettlementHold(orderId: string): Promise<boolean> {
+  if (!(await settlementTablesReady())) return false;
+  const hold = await prisma.settlementHold.findUnique({ where: { orderId } });
+  return !!hold;
+}
+
 const notify = async (token: string, title: string, body: string) => {
   await sendNotification(token, title, body);
 };
@@ -134,11 +153,41 @@ const placeOrder = async (req: any, res: any) => {
         .json({ message: "This vendor does not accept pay on delivery" });
     }
 
-    // ── OPay-paid order (payment engine) ──────────────────────────────────────
-    // Additive branch: skip the wallet lock; create the order in `pending` and
-    // let the payment engine confirm it on SUCCESS (handler creates escrow).
-    if (paymentMethod === "opay") {
-      const order = await prisma.order.create({
+    const isPod = paymentMethod === "pay_on_delivery";
+    let order;
+
+    if (isPod) {
+      // ── POD (pay on delivery) — LEGACY cash flow, intentionally UNCHANGED ───
+      // Locks at placement exactly as before; no escrow, no settlement hold.
+      const transactionRef = generateUUID();
+      const lockClientId = clientRequestId || transactionRef;
+
+      const lock = await WalletService.lockFundsForOrder({
+        userId,
+        amount: totalAmount,
+        clientRequestId: lockClientId,
+        metaData: {
+          finalAmountToPay: totalAmount,
+          productName: "Product Purchase",
+          direction: "debit",
+          transactionID: "",
+        },
+      });
+
+      if (lock.idempotent) {
+        const transactionStatus = prismaTransactionStatusToApi(
+          lock.transaction.status,
+        );
+        return res.json(
+          withTransactionStatus(
+            { ...lock.transaction } as Record<string, unknown>,
+            transactionStatus,
+            { omitStatus: true },
+          ),
+        );
+      }
+
+      order = await prisma.order.create({
         data: {
           userId,
           userName: user?.name?.split(" ")[0] || "User",
@@ -149,8 +198,8 @@ const placeOrder = async (req: any, res: any) => {
           transactionFee,
           totalAmount,
           status: "pending",
-          escrowStatus: "noEscrow", // escrow created by the engine on SUCCESS
-          paymentMethod: "opay",
+          escrowStatus: "noEscrow",
+          paymentMethod: "pay_on_delivery",
           deliveryState: deliveryAddress.state,
           deliveryLga: deliveryAddress.lga,
           deliveryArea: deliveryAddress.area,
@@ -159,93 +208,44 @@ const placeOrder = async (req: any, res: any) => {
           vendorLogo: branch.vendor.logo,
           branchName: `${branch.area}, ${branch.lga}`,
           items: { create: enrichedItems },
-          // …copy the SAME snapshot fields (items, delivery address, etc.) that
-          //   the existing `prisma.order.create` below sets — keep them identical.
         },
+        include: { items: true },
       });
-      return res.json({
-        orderId: order.id,
-        requiresPayment: true,
-        totalAmount,
+
+      await prisma.transaction.update({
+        where: { id: lock.transaction.id },
+        data: { orderId: order.id },
       });
-    }
-
-    const transactionRef = generateUUID();
-    const lockClientId = clientRequestId || transactionRef;
-
-    const lock = await WalletService.lockFundsForOrder({
-      userId,
-      amount: totalAmount,
-      clientRequestId: lockClientId,
-      metaData: {
-        finalAmountToPay: totalAmount,
-        productName: "Product Purchase",
-        direction: "debit",
-        transactionID: "",
-      },
-    });
-
-    if (lock.idempotent) {
-      const transactionStatus = prismaTransactionStatusToApi(
-        lock.transaction.status,
-      );
-      return res.json(
-        withTransactionStatus(
-          { ...lock.transaction } as Record<string, unknown>,
-          transactionStatus,
-          { omitStatus: true },
-        ),
-      );
-    }
-
-    const order = await prisma.order.create({
-      data: {
-        userId,
-        userName: user?.name?.split(" ")[0] || "User",
-        vendorId,
-        branchId,
-        subtotal,
-        deliveryFee,
-        transactionFee,
-        totalAmount,
-        status: "pending",
-        escrowStatus: paymentMethod == "pay_on_delivery" ? "noEscrow" : "held",
-        paymentMethod,
-        deliveryState: deliveryAddress.state,
-        deliveryLga: deliveryAddress.lga,
-        deliveryArea: deliveryAddress.area,
-        deliveryStreet: deliveryAddress.street,
-        vendorName: branch.vendor.name,
-        vendorLogo: branch.vendor.logo,
-        branchName: `${branch.area}, ${branch.lga}`,
-        items: { create: enrichedItems },
-      },
-      include: { items: true },
-    });
-
-    await prisma.transaction.update({
-      where: { id: lock.transaction.id },
-      data: {
-        orderId: order.id,
-      },
-    });
-
-    const commission = subtotal * (config.commissionPercent / 100);
-
-    if (paymentMethod !== "pay_on_delivery") {
-      // Settlement delay is trust-based (spec §11). Fail-open: falls back to
-      // AppConfig.autoReleaseHours if the trust profile/table is unavailable.
-      const settlementHours = await getVendorSettlementDelayHours(vendorId);
-      await prisma.escrow.create({
+    } else {
+      // ── PREPAID (wallet or OPay) — Phase 6 ─────────────────────────────────
+      // Create the order UNPAID (no wallet lock, no escrow). The Flutter
+      // PaymentSheet pays up front (wallet or OPay); on payment SUCCESS the
+      // `marketplace_order` handler confirms the order and creates the merchant
+      // settlement hold (NET of our cut). If the buyer abandons payment, the
+      // order stays pending and auto-cancels in 30 min (no money was moved).
+      order = await prisma.order.create({
         data: {
-          orderId: order.id,
-          amountHeld: totalAmount,
-          commission,
-          releaseStatus: "held",
-          autoReleaseAt: new Date(
-            Date.now() + settlementHours * 60 * 60 * 1000,
-          ),
+          userId,
+          userName: user?.name?.split(" ")[0] || "User",
+          vendorId,
+          branchId,
+          subtotal,
+          deliveryFee,
+          transactionFee,
+          totalAmount,
+          status: "pending",
+          escrowStatus: "held",
+          paymentMethod,
+          deliveryState: deliveryAddress.state,
+          deliveryLga: deliveryAddress.lga,
+          deliveryArea: deliveryAddress.area,
+          deliveryStreet: deliveryAddress.street,
+          vendorName: branch.vendor.name,
+          vendorLogo: branch.vendor.logo,
+          branchName: `${branch.area}, ${branch.lga}`,
+          items: { create: enrichedItems },
         },
+        include: { items: true },
       });
     }
 
@@ -347,34 +347,41 @@ const confirmDelivery = async (req: any, res: any) => {
       include: { items: true },
     });
 
-    await prisma.escrow.update({
-      where: { orderId },
-      data: { releaseStatus: "released", releasedAt: new Date() },
-    });
-
-    await recalculateVendorMetrics(order.vendorId);
-
     const vendor = await prisma.vendor.findUnique({
       where: { id: order.vendorId },
       include: { user: true },
     });
 
-    await WalletService.creditAvailableBalance({
-      userId: vendor!.ownerId,
-      amount: order.totalAmount,
-    });
-    await WalletService.createCreditTransaction({
-      userId: vendor!.ownerId,
-      amount: order.totalAmount,
-      type: TX_TYPE.ORDER_PAYMENT,
-      metaData: { orderId, vendorId: vendor!.id },
-    });
+    if (await hasSettlementHold(orderId)) {
+      // Phase 6: settle the merchant's pending hold → wallet available (NET).
+      await releaseHold(orderId);
+      await recalculateVendorMetrics(order.vendorId);
+    } else {
+      // Legacy escrow order — unchanged behaviour.
+      await prisma.escrow.update({
+        where: { orderId },
+        data: { releaseStatus: "released", releasedAt: new Date() },
+      });
 
-    await WalletService.releaseEscow({
-      userId: userId,
-      amount: order.totalAmount,
-      orderId: order.id,
-    });
+      await recalculateVendorMetrics(order.vendorId);
+
+      await WalletService.creditAvailableBalance({
+        userId: vendor!.ownerId,
+        amount: order.totalAmount,
+      });
+      await WalletService.createCreditTransaction({
+        userId: vendor!.ownerId,
+        amount: order.totalAmount,
+        type: TX_TYPE.ORDER_PAYMENT,
+        metaData: { orderId, vendorId: vendor!.id },
+      });
+
+      await WalletService.releaseEscow({
+        userId: userId,
+        amount: order.totalAmount,
+        orderId: order.id,
+      });
+    }
 
     if (vendor)
       await notify(
@@ -436,14 +443,19 @@ const appealOrder = async (req: any, res: any) => {
       include: { items: true },
     });
 
-    await prisma.escrow.update({
-      where: { orderId },
-      data: {
-        releaseStatus: "appealed",
-        appealReason: reason,
-        autoReleaseAt: new Date("2099-01-01"), // freeze — admin must resolve
-      },
-    });
+    if (await hasSettlementHold(orderId)) {
+      // Phase 6: freeze the pending hold — payout blocked until resolved.
+      await freezeHold(orderId, reason ?? "appeal");
+    } else {
+      await prisma.escrow.update({
+        where: { orderId },
+        data: {
+          releaseStatus: "appealed",
+          appealReason: reason,
+          autoReleaseAt: new Date("2099-01-01"), // freeze — admin must resolve
+        },
+      });
+    }
 
     const customerSupport = await prisma.user.findFirst({
       where: { role: "admin" },
@@ -534,11 +546,6 @@ const updateOrderStatus = async (req: any, res: any) => {
     let updated: Order;
 
     if (status === "cancelled") {
-      await prisma.escrow.update({
-        where: { orderId },
-        data: { releaseStatus: "refunded", refundedAt: new Date() },
-      });
-
       updated = await prisma.order.update({
         where: { id: orderId },
         data: { escrowStatus: "refunded", updatedAt: new Date(), status },
@@ -561,16 +568,36 @@ const updateOrderStatus = async (req: any, res: any) => {
           .doc(`orderPings/${pingBranch.managerId}`)
           .set({ updatedAt: now }, { merge: true });
 
-      await WalletService.moveLockedToAvailableCredit({
-        userId: updated.userId,
-        amount: order.totalAmount,
-      });
-      await WalletService.createCreditTransaction({
-        userId: updated.userId,
-        amount: order.totalAmount,
-        type: TX_TYPE.ORDER_REFUND,
-        metaData: { orderId, vendorId: order.vendorId },
-      });
+      // Phase 6 refund routing (3-way):
+      //  • settlement hold  → full-gross refund + reverse hold
+      //  • legacy escrow    → unchanged locked-funds refund
+      //  • neither (UNPAID prepaid order) → cancel only, NO money moved
+      if (await hasSettlementHold(orderId)) {
+        await refundHold({
+          orderId,
+          buyerId: updated.userId,
+          reason: "vendor_cancelled",
+        });
+      } else {
+        const esc = await prisma.escrow.findUnique({ where: { orderId } });
+        if (esc) {
+          await prisma.escrow.update({
+            where: { orderId },
+            data: { releaseStatus: "refunded", refundedAt: new Date() },
+          });
+          await WalletService.moveLockedToAvailableCredit({
+            userId: updated.userId,
+            amount: order.totalAmount,
+          });
+          await WalletService.createCreditTransaction({
+            userId: updated.userId,
+            amount: order.totalAmount,
+            type: TX_TYPE.ORDER_REFUND,
+            metaData: { orderId, vendorId: order.vendorId },
+          });
+        }
+        // else: unpaid prepaid order — nothing to refund.
+      }
 
       await recalculateVendorMetrics(order.vendorId);
     }
@@ -633,10 +660,15 @@ const cancelAppeal = async (req: any, res: any) => {
       });
     }
 
-    await prisma.escrow.update({
-      where: { orderId },
-      data: { releaseStatus: "held", autoReleaseAt },
-    });
+    if (await hasSettlementHold(orderId)) {
+      // Phase 6: unfreeze the hold and restart the settlement clock from now.
+      await unfreezeHold(orderId);
+    } else {
+      await prisma.escrow.update({
+        where: { orderId },
+        data: { releaseStatus: "held", autoReleaseAt },
+      });
+    }
 
     // After: updated = await prisma.order.update({ where: { id: orderId }, data: { status }, ... });
     const db = admin.firestore();
@@ -654,7 +686,7 @@ const cancelAppeal = async (req: any, res: any) => {
         .doc(`orderPings/${pingBranch.managerId}`)
         .set({ updatedAt: now }, { merge: true });
 
-    res.json({ message: "Appeal cancelled. Escrow timer restored." });
+    res.json({ message: "Appeal cancelled. Settlement timer restored." });
   } catch (e: any) {
     res.status(401).json({ message: e.message });
   }
@@ -684,6 +716,7 @@ const concedeAppeal = async (req: any, res: any) => {
         .json({ message: "You cannot concede your own appeal" });
 
     const buyerAppealed = order.appealedBy === order.userId;
+    const usesHold = await hasSettlementHold(orderId);
 
     if (buyerAppealed) {
       // Vendor concedes → buyer wins → refund
@@ -691,20 +724,29 @@ const concedeAppeal = async (req: any, res: any) => {
         where: { id: orderId },
         data: { status: "cancelled", escrowStatus: "refunded" },
       });
-      await prisma.escrow.update({
-        where: { orderId },
-        data: { releaseStatus: "refunded", refundedAt: new Date() },
-      });
-      await WalletService.moveLockedToAvailableCredit({
-        userId: order.userId,
-        amount: order.totalAmount,
-      });
-      await WalletService.createCreditTransaction({
-        userId: order.userId,
-        amount: order.totalAmount,
-        type: TX_TYPE.ORDER_REFUND,
-        metaData: { orderId, vendorId: order.vendorId },
-      });
+      if (usesHold) {
+        // Phase 6: reverse the hold; buyer made whole for the FULL gross.
+        await refundHold({
+          orderId,
+          buyerId: order.userId,
+          reason: "appeal_conceded",
+        });
+      } else {
+        await prisma.escrow.update({
+          where: { orderId },
+          data: { releaseStatus: "refunded", refundedAt: new Date() },
+        });
+        await WalletService.moveLockedToAvailableCredit({
+          userId: order.userId,
+          amount: order.totalAmount,
+        });
+        await WalletService.createCreditTransaction({
+          userId: order.userId,
+          amount: order.totalAmount,
+          type: TX_TYPE.ORDER_REFUND,
+          metaData: { orderId, vendorId: order.vendorId },
+        });
+      }
     } else {
       // Buyer concedes → vendor wins → release
       const vendor = await prisma.vendor.findUnique({
@@ -715,26 +757,32 @@ const concedeAppeal = async (req: any, res: any) => {
         where: { id: orderId },
         data: { status: "completed", escrowStatus: "released" },
       });
-      await prisma.escrow.update({
-        where: { orderId },
-        data: { releaseStatus: "released", releasedAt: new Date() },
-      });
-      await WalletService.creditAvailableBalance({
-        userId: vendor!.ownerId,
-        amount: order.totalAmount,
-      });
-      await WalletService.createCreditTransaction({
-        userId: vendor!.ownerId,
-        amount: order.totalAmount,
-        type: TX_TYPE.ORDER_PAYMENT,
-        metaData: { orderId, vendorId: vendor!.id },
-      });
-      await WalletService.releaseEscow({
-        userId: order.userId,
-        amount: order.totalAmount,
-        orderId: order.id,
-      });
-      await recalculateVendorMetrics(order.vendorId);
+      if (usesHold) {
+        // Phase 6: settle the hold to the merchant's wallet (NET).
+        await releaseHold(orderId);
+        await recalculateVendorMetrics(order.vendorId);
+      } else {
+        await prisma.escrow.update({
+          where: { orderId },
+          data: { releaseStatus: "released", releasedAt: new Date() },
+        });
+        await WalletService.creditAvailableBalance({
+          userId: vendor!.ownerId,
+          amount: order.totalAmount,
+        });
+        await WalletService.createCreditTransaction({
+          userId: vendor!.ownerId,
+          amount: order.totalAmount,
+          type: TX_TYPE.ORDER_PAYMENT,
+          metaData: { orderId, vendorId: vendor!.id },
+        });
+        await WalletService.releaseEscow({
+          userId: order.userId,
+          amount: order.totalAmount,
+          orderId: order.id,
+        });
+        await recalculateVendorMetrics(order.vendorId);
+      }
     }
 
     // Notifications

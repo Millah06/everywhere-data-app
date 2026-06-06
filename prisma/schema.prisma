@@ -742,6 +742,46 @@ model Escrow {
   order Order @relation(fields: [orderId], references: [id])
 }
 
+enum SettlementHoldStatus {
+  pending
+  frozen
+  released
+  refunded
+  cancelled
+}
+
+model MerchantBalance {
+  id        String   @id @default(uuid())
+  vendorId  String   @unique
+  pending   Float    @default(0)
+  available Float    @default(0)
+  paidOut   Float    @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model SettlementHold {
+  id           String               @id @default(uuid())
+  orderId      String               @unique
+  vendorId     String
+  gross        Float
+  commission   Float                @default(0)
+  net          Float
+  status       SettlementHoldStatus @default(pending)
+  settleAt     DateTime
+  source       String               @default("wallet") // "wallet" | "opay"
+  paymentId    String?
+  frozenReason String?
+  releasedAt   DateTime?
+  refundedAt   DateTime?
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  @@index([vendorId])
+  @@index([status, settleAt])
+  @@index([paymentId])
+}
+
 model Review {
   id        String   @id @default(uuid())
   vendorId  String

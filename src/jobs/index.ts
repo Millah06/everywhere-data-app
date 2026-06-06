@@ -5,6 +5,7 @@ import {
 } from "../modules/marketPlace/escow/autoReleaseJob";
 import { runTrustUpgradeJob } from "../modules/trust/trust.cron";
 import { runPaymentRecoveryJob } from "./paymentRecovery";
+import { runSettlementJob } from "../modules/marketPlace/settlement/settlement.service";
 
 export const startJobs = () => {
   cron.schedule("0 * * * *", async () => {
@@ -14,6 +15,13 @@ export const startJobs = () => {
   cron.schedule("* * * * *", async () => {
     // Runs every minute — lightweight, only touches pending orders older than 30 min
     await runAutoCancelJob();
+  });
+
+  // Phase 6 settlement (every 5 min): roll due PENDING holds → Available.
+  // Replaces auto-release for the new settlement model. Migration-safe no-op
+  // until the MerchantBalance/SettlementHold tables exist (fails closed).
+  cron.schedule("*/5 * * * *", async () => {
+    await runSettlementJob();
   });
 
   // Nightly (~02:00) — promote L1→L2 when criteria are met, sync settlement
@@ -28,5 +36,4 @@ export const startJobs = () => {
   cron.schedule("*/5 * * * *", async () => {
     await runPaymentRecoveryJob();
   });
-  
 };

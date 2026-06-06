@@ -4,10 +4,25 @@ const phonePattern = /(\+?\d[\d\s\-]{8,}\d)/;
 import { sendNotification } from "../../../shared/utils/notification";
 import { WalletService } from "../../../shared/services/wallet.service";
 import { TX_TYPE } from "../../../shared/utils/transactionType";
+import {
+  releaseHold,
+  refundHold,
+  settlementTablesReady,
+} from "../../marketPlace/settlement/settlement.service";
 
 const notify = async (token: string, title: string, body: string) => {
   await sendNotification(token, title, body);
 };
+
+/**
+ * Phase 6: true when this order uses the new settlement-hold model. Legacy
+ * escrow orders (no hold) return false and keep the old admin money paths.
+ */
+async function adminHasSettlementHold(orderId: string): Promise<boolean> {
+  if (!(await settlementTablesReady())) return false;
+  const hold = await prisma.settlementHold.findUnique({ where: { orderId } });
+  return !!hold;
+}
 
 const getVendors = async (req: any, res: any) => {
   try {
@@ -170,16 +185,35 @@ const resolveAppeal = async (req: any, res: any) => {
     if (!vendor) return res.status(404).json({ message: "Vendor not found" });
     if (!user) return res.status(404).json({ message: "User not found" });
 
+    const usesHold = await adminHasSettlementHold(orderId);
+
     if (decision === "release_vendor") {
       await prisma.order.update({
         where: { id: orderId },
         data: { status: "completed", escrowStatus: "released" },
       });
-      await prisma.escrow.update({
-        where: { orderId },
-        data: { releaseStatus: "released", releasedAt: new Date() },
-      });
 
+      if (usesHold) {
+        // Phase 6: settle the frozen hold to the merchant's wallet (NET).
+        await releaseHold(orderId);
+      } else {
+        await prisma.escrow.update({
+          where: { orderId },
+          data: { releaseStatus: "released", releasedAt: new Date() },
+        });
+        await WalletService.creditAvailableBalance({
+          userId: vendor!.ownerId,
+          amount: order.totalAmount,
+        });
+        await WalletService.createCreditTransaction({
+          userId: vendor!.ownerId,
+          amount: order.totalAmount,
+          type: TX_TYPE.ORDER_PAYMENT,
+          metaData: { orderId, vendorId: vendor!.id },
+        });
+      }
+
+      // Refresh vendor metrics for both paths (order is now completed).
       const all = await prisma.order.findMany({
         where: { vendorId: vendor.id },
       });
@@ -196,17 +230,6 @@ const resolveAppeal = async (req: any, res: any) => {
         },
       });
 
-      await WalletService.creditAvailableBalance({
-        userId: vendor!.ownerId,
-        amount: order.totalAmount,
-      });
-      await WalletService.createCreditTransaction({
-        userId: vendor!.ownerId,
-        amount: order.totalAmount,
-        type: TX_TYPE.ORDER_PAYMENT,
-        metaData: { orderId, vendorId: vendor!.id },
-      });
-
       await notify(
         vendor.user.notificationToken!,
         "APPEAL RESOLVED IN YOUR FAVOUR",
@@ -219,22 +242,30 @@ const resolveAppeal = async (req: any, res: any) => {
         where: { id: orderId },
         data: { status: "cancelled", escrowStatus: "refunded" },
       });
-      await prisma.escrow.update({
-        where: { orderId },
-        data: { releaseStatus: "refunded", releasedAt: new Date() },
-      });
 
-      await WalletService.moveLockedToAvailableCredit({
-        userId: updated.userId,
-        amount: order.totalAmount,
-      });
-
-      await WalletService.createCreditTransaction({
-        userId: updated.userId,
-        amount: order.totalAmount,
-        type: TX_TYPE.ORDER_REFUND,
-        metaData: { orderId, vendorId: order.vendorId },
-      });
+      if (usesHold) {
+        // Phase 6: reverse the frozen hold; buyer made whole for FULL gross.
+        await refundHold({
+          orderId,
+          buyerId: updated.userId,
+          reason: "admin_refund",
+        });
+      } else {
+        await prisma.escrow.update({
+          where: { orderId },
+          data: { releaseStatus: "refunded", releasedAt: new Date() },
+        });
+        await WalletService.moveLockedToAvailableCredit({
+          userId: updated.userId,
+          amount: order.totalAmount,
+        });
+        await WalletService.createCreditTransaction({
+          userId: updated.userId,
+          amount: order.totalAmount,
+          type: TX_TYPE.ORDER_REFUND,
+          metaData: { orderId, vendorId: order.vendorId },
+        });
+      }
 
       await notify(user?.notificationToken!, "APPEAL RESOLVED", reason);
 

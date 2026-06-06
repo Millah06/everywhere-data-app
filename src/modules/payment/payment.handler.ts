@@ -10,12 +10,12 @@
 //     import { registerPaymentHandler } from "../payment/payment.handler";
 //     registerPaymentHandler("dine_in_order", async (payment) => { ... });
 //
-// No edit to the engine is needed. That keeps Phase 6 (dine-in) and any future
+// No edit to the engine is needed. That keeps Phase 7 (dine-in) and any future
 // service decoupled from this file.
 
 import { prisma } from "../../prisma";
-import { PAYMENT_ENTITY } from "./payment.types";
-import { getVendorSettlementDelayHours } from "../marketPlace/settlement/settlement.rules";
+import { PAYMENT_ENTITY, PAYMENT_PROVIDER } from "./payment.types";
+import { createPendingHold } from "../marketPlace/settlement/settlement.service";
 
 // A handler receives the SUCCESS payment and completes its side effect.
 // It MUST be idempotent: the recovery cron + webhook can both fire for the same
@@ -53,15 +53,22 @@ export async function dispatch(payment: any): Promise<void> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// marketplace_order — REAL handler, wired in Phase 5.
+// marketplace_order — Phase 6 (settlement model). Serves BOTH wallet- and
+// OPay-paid orders now: `placeOrder` creates the order UNPAID and the universal
+// PaymentSheet pays it through the engine, which lands here on SUCCESS.
 //
-// The link is Payment.entityId → Order.id. On SUCCESS we confirm the order and
-// ensure its escrow exists, using ONLY existing Order/Escrow columns (no schema
-// change, no new migration). Fully idempotent: re-running is a no-op once the
-// order is already confirmed / escrow already exists.
+// The link is Payment.entityId → Order.id. On SUCCESS we credit the merchant's
+// PENDING balance with the NET payout, then confirm the order. NO escrow row.
 //
-// This handler is what an OPay-paid order uses. The existing wallet checkout
-// (`placeOrder`) is untouched and does NOT go through here.
+// ORDER OF OPERATIONS matters: create the hold FIRST, confirm SECOND. If the
+// hold write fails (e.g. before the settlement migration runs, it fails closed),
+// the order stays `pending` and the whole dispatch throws — so the wallet path
+// refunds cleanly and the order auto-cancels, instead of leaving a confirmed
+// order with no money parked.
+//
+// Fully idempotent: the status guard returns early once confirmed, and
+// createPendingHold is a no-op if the hold already exists (webhook + recovery
+// cron can both fire for one payment).
 // ─────────────────────────────────────────────────────────────────────────────
 registerPaymentHandler(PAYMENT_ENTITY.MARKETPLACE_ORDER, async (payment) => {
   const orderId: string = payment.entityId;
@@ -75,36 +82,35 @@ registerPaymentHandler(PAYMENT_ENTITY.MARKETPLACE_ORDER, async (payment) => {
   // Idempotency: already past pending → nothing to do.
   if (order.status !== "pending") return;
 
-  // Settlement delay is trust-based (fail-open to AppConfig.autoReleaseHours).
-  const settlementHours = await getVendorSettlementDelayHours(order.vendorId);
+  //   commission = subtotal·commission% + transactionFee   (platform revenue)
+  //   net        = totalAmount − commission                (computed in createPendingHold)
+  const cfg = await prisma.appConfig.findFirst();
+  const commissionPct = cfg?.commissionPercent ?? 5;
+  const commission =
+    order.subtotal * (commissionPct / 100) + order.transactionFee;
 
-  await prisma.$transaction(async (tx) => {
-    // Confirm the order (vendor will see it as a new incoming order).
-    await tx.order.update({
-      where: { id: order.id },
-      data: { status: "confirmed", escrowStatus: "held" },
-    });
+  // 1) Park the merchant's NET in PENDING (idempotent on orderId).
+  await createPendingHold({
+    orderId: order.id,
+    vendorId: order.vendorId,
+    gross: order.totalAmount,
+    commission,
+    source: payment.provider === PAYMENT_PROVIDER.OPAY ? "opay" : "wallet",
+    paymentId: payment.id,
+  });
 
-    // Ensure escrow exists (created once, idempotently).
-    const existing = await tx.escrow.findUnique({ where: { orderId: order.id } });
-    if (!existing) {
-      await tx.escrow.create({
-        data: {
-          orderId: order.id,
-          amountHeld: order.totalAmount,
-          commission: 0, // commission already reflected in transactionFee at placement
-          releaseStatus: "held",
-          autoReleaseAt: new Date(Date.now() + settlementHours * 60 * 60 * 1000),
-        },
-      });
-    }
+  // 2) Confirm the order (vendor sees it as a new incoming order).
+  await prisma.order.update({
+    where: { id: order.id },
+    data: { status: "confirmed", escrowStatus: "held" },
   });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SEAMS for later phases — intentionally NOT registered here.
 //
-//   • "dine_in_order" → registered by the dine-in module in Phase 6.
+//   • "dine_in_order" → registered by the dine-in module in Phase 7 (it will
+//                       mirror this handler: confirm + createPendingHold).
 //   • "utility"       → the existing VTPass utility flow does not route through
 //                       the engine yet; when it migrates, that module registers
 //                       its own handler.

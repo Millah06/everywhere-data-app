@@ -14,6 +14,7 @@ import { optionalAuthMiddleware} from "../middleware/auth";
 import { getFollowers, getFollowing } from "../modules/search/controllers/search.controller";
 import trustRoutes from "../modules/trust/trust.routes";
 import paymentRoutes from "../modules/payment/payment.routes";
+import merchantBalanceRoutes from "../modules/marketPlace/settlement/merchantBalance.routes"; // ← new merchant balance routes
 import "../modules/utility/utility.handler";      // ← registers the "utility" handler
 
 
@@ -34,5 +35,6 @@ router.get('/users/:userId/followers', optionalAuthMiddleware, getFollowers);
 router.get('/users/:userId/following', optionalAuthMiddleware, getFollowing);
 router.use(trustRoutes);
 router.use(paymentRoutes);
+router.use(merchantBalanceRoutes); // ← mount the merchant balance routes
 
 export default router;

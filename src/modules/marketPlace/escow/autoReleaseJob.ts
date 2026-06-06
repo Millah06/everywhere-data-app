@@ -3,11 +3,28 @@ import admin from "firebase-admin";
 import { sendNotification } from "../../../shared/utils/notification";
 import { WalletService } from "../../../shared/services/wallet.service";
 import { TX_TYPE } from "../../../shared/utils/transactionType";
+import { refundHold, settlementTablesReady } from "../settlement/settlement.service";
 
 const notify = async (token: string, title: string, body: string) => {
   await sendNotification(token, title, body);
 };
 
+/**
+ * Phase 6: true when this order uses the new settlement-hold model.
+ * Legacy escrow orders (no hold) return false and keep the old refund path.
+ */
+async function jobHasSettlementHold(orderId: string): Promise<boolean> {
+  if (!(await settlementTablesReady())) return false;
+  const hold = await prisma.settlementHold.findUnique({ where: { orderId } });
+  return !!hold;
+}
+
+/**
+ * LEGACY escrow auto-release — KEPT for Phase 6 transition. It only ever finds
+ * `Escrow` rows with releaseStatus "held", which NEW orders no longer create,
+ * so this drains pre-cutover orders and then idles. New settlement holds are
+ * rolled Pending → Available by `runSettlementJob` in settlement.service.ts.
+ */
 export const runAutoReleaseJob = async () => {
   console.log(`[EscrowJob] Running at ${new Date().toISOString()}`);
 
@@ -104,13 +121,6 @@ export const runAutoCancelJob = async () => {
 
     if (updated.count === 0) continue;
 
-    if (order.escrow) {
-      await prisma.escrow.update({
-        where: { orderId: order.id },
-        data: { releaseStatus: "refunded" },
-      });
-    }
-
     const vendor = await prisma.vendor.findUnique({
       where: { id: order.vendorId },
       include: { user: { select: { notificationToken: true } } },
@@ -124,17 +134,33 @@ export const runAutoCancelJob = async () => {
     if (!vendor) continue;
     if (!user) continue;
 
-    await WalletService.moveLockedToAvailableCredit({
-      userId: order.userId,
-      amount: order.totalAmount,
-    });
-
-    await WalletService.createCreditTransaction({
-      userId: order.userId,
-      amount: order.totalAmount,
-      type: TX_TYPE.ORDER_REFUND,
-      metaData: { orderId: order.id, vendorId: order.vendorId },
-    });
+    // Phase 6 refund routing (3-way):
+    //  • settlement hold → make the buyer whole (full gross) + reverse hold
+    //  • legacy escrow   → unchanged locked-funds refund
+    //  • neither (UNPAID prepaid order that was never paid) → cancel only,
+    //    NO money moved (nothing was ever taken).
+    if (await jobHasSettlementHold(order.id)) {
+      await refundHold({
+        orderId: order.id,
+        buyerId: order.userId,
+        reason: "auto_cancel",
+      });
+    } else if (order.escrow) {
+      await prisma.escrow.update({
+        where: { orderId: order.id },
+        data: { releaseStatus: "refunded" },
+      });
+      await WalletService.moveLockedToAvailableCredit({
+        userId: order.userId,
+        amount: order.totalAmount,
+      });
+      await WalletService.createCreditTransaction({
+        userId: order.userId,
+        amount: order.totalAmount,
+        type: TX_TYPE.ORDER_REFUND,
+        metaData: { orderId: order.id, vendorId: order.vendorId },
+      });
+    }
 
     await notify(
       user?.notificationToken!,
