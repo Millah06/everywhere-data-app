@@ -10,19 +10,22 @@ import {
 } from "./settlement.rules";
 
 /**
- * Resolve the Vendor owned by the current user. Mirrors the existing
- * `/vendor/me` resolution: `Vendor.ownerId` is the internal user id used as a
- * wallet key (see how escrow release credits `vendor.ownerId`). We also fall
- * back to `ownerFirebaseUid` defensively.
+ * Resolve the Vendor for the current user. Mirrors how the app actually loads
+ * the vendor center: `getMyVendor` resolves by `branches.some.managerId`, while
+ * owner-based endpoints (toggleVisibility/updateProfile) use `ownerId`. We OR
+ * both so it matches whether the user is the owner OR a branch manager — the
+ * balance shown is the vendor's single (owner-held) balance either way.
  */
 async function resolveMyVendor(req: any) {
   const userId = req.user?.id;
-  const uid = req.user?.uid;
-  let vendor = await prisma.vendor.findFirst({ where: { ownerId: userId } });
-  if (!vendor && uid) {
-    vendor = await prisma.vendor.findFirst({ where: { ownerFirebaseUid: uid } });
-  }
-  return vendor;
+  return prisma.vendor.findFirst({
+    where: {
+      OR: [
+        { ownerId: userId },
+        { branches: { some: { managerId: userId } } },
+      ],
+    },
+  });
 }
 
 /**
