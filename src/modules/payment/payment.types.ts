@@ -102,7 +102,7 @@ export type PaymentEntity =
   (typeof PAYMENT_ENTITY)[keyof typeof PAYMENT_ENTITY];
 
 // CREATED payments expire after this long with no progress (spec §13.3).
-export const PAYMENT_EXPIRY_MINUTES = 30;
+export const PAYMENT_EXPIRY_MINUTES = 15;
 
 // How long an OPay cashier session stays open, in seconds (spec: 30 min view,
 // but OPay's `expireAt` is its own window — we keep them aligned).

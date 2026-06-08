@@ -32,6 +32,28 @@ import { getVendorSettlementDelayHours } from "./settlement.rules";
  *  • All operations are idempotent on `SettlementHold.orderId` (unique).
  */
 
+/** Recoup outstanding POD (cash) commission from a prepaid settlement. Pass the
+ *  net you're about to credit the owner; returns the adjusted net to credit. */
+export async function applyPodCommissionOffset(
+  db: any,                 // pass the SAME client releaseHold uses (prisma or tx)
+  vendorId: string,
+  net: number,
+): Promise<number> {
+  if (net <= 0) return net;
+  const v = await db.vendor.findUnique({
+    where: { id: vendorId },
+    select: { podCommissionOwed: true },
+  });
+  const owed = v?.podCommissionOwed ?? 0;
+  if (owed <= 0) return net;
+  const deduct = Math.min(owed, net);
+  await db.vendor.update({
+    where: { id: vendorId },
+    data: { podCommissionOwed: { decrement: deduct } },
+  });
+  return net - deduct;
+}
+
 export class SettlementTablesMissingError extends Error {
   constructor() {
     super("Settlement tables not migrated");
@@ -196,13 +218,18 @@ export async function releaseHold(orderId: string) {
 
     // Pending -> Available (reporting) and credit the real wallet (withdrawable).
     await adjustBalance(tx, hold.vendorId, { pending: -hold.net, available: hold.net });
-    await creditOwnerWallet(tx, vendor.ownerId, hold.net, TX_TYPE.ORDER_PAYMENT, {
+
+    const payout = await applyPodCommissionOffset(tx /* or your tx client */, vendor.ownerId, hold.net);
+    // use `payout` (not `net`) for the MerchantBalance available/paidOut mirror too, so reporting matches.
+
+    await creditOwnerWallet(tx, vendor.ownerId, payout, TX_TYPE.ORDER_PAYMENT, {
       orderId,
       vendorId: hold.vendorId,
       kind: "settlement",
       gross: hold.gross,
       commission: hold.commission,
-      net: hold.net,
+      ...(hold.net > payout ? { podCommissionOffset: round2(hold.net - payout) } : {}),
+      net: payout,
     });
 
     return { released: true as const, hold, ownerId: vendor.ownerId };

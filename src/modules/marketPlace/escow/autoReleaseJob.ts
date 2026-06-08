@@ -191,3 +191,54 @@ export const runAutoCancelJob = async () => {
     await pingOrderParties(order.id);
   }
 };
+
+/**
+ * Auto-confirm POD orders the vendor left at "delivered" without tapping
+ * "Confirm Cash". After a grace window we complete the order and accrue the
+ * commission anyway — so a vendor can't dodge commission (or leave an order
+ * hanging) by simply never confirming. Mirrors confirmPodReceived.
+ */
+export const runPodAutoConfirmJob = async () => {
+  const graceHours = 24; // tune to taste
+  const cutoff = new Date(Date.now() - graceHours * 60 * 60 * 1000);
+
+  const stuck = await prisma.order.findMany({
+    where: {
+      status: "delivered",
+      paymentMethod: "pay_on_delivery",
+      podConfirmed: false,
+      // proxy for "delivered at" — add a dedicated deliveredAt column if you
+      // want exactness (updatedAt is fine since nothing edits a delivered POD
+      // order until confirmation).
+      updatedAt: { lt: cutoff },
+    },
+  });
+
+  const config = await prisma.appConfig.findFirst();
+  const commissionPercent = config?.commissionPercent ?? 5;
+
+  for (const order of stuck) {
+    // Race-guarded: a manual "Confirm Cash" in the same tick wins.
+    const updated = await prisma.order.updateMany({
+      where: { id: order.id, status: "delivered", podConfirmed: false },
+      data: { status: "completed", podConfirmed: true },
+    });
+    if (updated.count === 0) continue;
+
+    const commission = order.subtotal * (commissionPercent / 100);
+    await prisma.vendor.update({
+      where: { id: order.vendorId },
+      data: { podCommissionOwed: { increment: commission } },
+    });
+    await admin.firestore().collection("podCommissions").add({
+      orderId: order.id,
+      vendorId: order.vendorId,
+      subtotal: order.subtotal,
+      commission,
+      autoConfirmed: true,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    await pingOrderParties(order.id);
+  }
+};

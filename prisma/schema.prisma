@@ -585,6 +585,7 @@ model Vendor {
   rating               Float      @default(0)
   totalCompletedOrders Int        @default(0)
   completionRate       Float      @default(100)
+  podCommissionOwed    Float @default(0)
   verified             Boolean    @default(false)
   verificationStatus   VerificationStatus @default(unverified)
   // existing...
@@ -599,6 +600,7 @@ model Vendor {
   branches Branch[]
   orders   Order[]
   reviews  Review[]
+  
 
   trustProfile     MerchantTrustProfile?
   tables           RestaurantTable[]

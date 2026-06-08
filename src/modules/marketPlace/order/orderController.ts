@@ -1,4 +1,4 @@
-import { prisma } from "../../../prisma";
+ import { prisma } from "../../../prisma";
 import admin from "firebase-admin";
 import { sendNotification } from "../../../shared/utils/notification";
 import { generateUUID } from "../../../shared/utils/uuid";
@@ -834,14 +834,21 @@ const confirmPodReceived = async (req: any, res: any) => {
     const commissionPercent = config?.commissionPercent ?? 5;
     const commission = order.subtotal * (commissionPercent / 100);
 
-    // Mark POD confirmed and deduct commission
-    // Commission is owed — log it for reconciliation
+    // Mark POD confirmed
     await prisma.order.update({
       where: { id: orderId },
       data: { status: "completed", podConfirmed: true },
     });
 
-    // Log commission debt (you collect this separately)
+    // Accrue the POD commission as a debt on the vendor. POD is cash (we can't
+    // auto-debit it), so this is recouped automatically from the vendor's next
+    // PREPAID settlement(s) via applyPodCommissionOffset() in releaseHold().
+    await prisma.vendor.update({
+      where: { id: order.vendorId },
+      data: { podCommissionOwed: { increment: commission } },
+    });
+
+    // Keep the audit trail too (handy for reconciliation/exports).
     await admin.firestore().collection("podCommissions").add({
       orderId: order.id,
       vendorId: order.vendorId,
