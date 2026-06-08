@@ -179,6 +179,11 @@ export async function reconcileOpayPayment(payment: any): Promise<any> {
   if (q.status === "FAILED") {
     return setStatus(p, PAYMENT_STATUS.FAILED, { failReason: "opay_failed" });
   }
+
+  if (p.expiresAt && new Date(p.expiresAt).getTime() < Date.now()) {
+    return setStatus(p, PAYMENT_STATUS.FAILED, { failReason: "abandoned" });
+  }
+  
   return p; // still PENDING/VERIFYING
 }
 

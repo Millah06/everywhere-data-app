@@ -3,6 +3,7 @@ import admin from "firebase-admin";
 import { sendNotification } from "../../../shared/utils/notification";
 import { WalletService } from "../../../shared/services/wallet.service";
 import { TX_TYPE } from "../../../shared/utils/transactionType";
+import { pingOrderParties } from "../order/orderPing";
 import { refundHold, settlementTablesReady } from "../settlement/settlement.service";
 
 const notify = async (token: string, title: string, body: string) => {
@@ -10,20 +11,8 @@ const notify = async (token: string, title: string, body: string) => {
 };
 
 /**
- * Phase 6: true when this order uses the new settlement-hold model.
- * Legacy escrow orders (no hold) return false and keep the old refund path.
- */
-async function jobHasSettlementHold(orderId: string): Promise<boolean> {
-  if (!(await settlementTablesReady())) return false;
-  const hold = await prisma.settlementHold.findUnique({ where: { orderId } });
-  return !!hold;
-}
-
-/**
- * LEGACY escrow auto-release — KEPT for Phase 6 transition. It only ever finds
- * `Escrow` rows with releaseStatus "held", which NEW orders no longer create,
- * so this drains pre-cutover orders and then idles. New settlement holds are
- * rolled Pending → Available by `runSettlementJob` in settlement.service.ts.
+ * LEGACY escrow auto-release. Phase 6 settlement holds are released by
+ * `runSettlementJob`; this only drains old `Escrow` rows still in flight.
  */
 export const runAutoReleaseJob = async () => {
   console.log(`[EscrowJob] Running at ${new Date().toISOString()}`);
@@ -83,19 +72,27 @@ export const runAutoReleaseJob = async () => {
         orderId: order.id,
       });
 
-      await notify(
-        escrow.order.userId,
-        "ORDER AUTOMATICALLY COMPLETED",
-        "Your order has been automatically completed.",
-      );
-
-      if (vendor) {
+      // Notify the buyer (fetch the real token — userId is NOT a token).
+      const buyer = await prisma.user.findUnique({
+        where: { id: order.userId },
+        select: { notificationToken: true },
+      });
+      if (buyer?.notificationToken) {
         await notify(
-          vendor.user.notificationToken!,
+          buyer.notificationToken,
+          "ORDER AUTOMATICALLY COMPLETED",
+          "Your order has been automatically completed.",
+        );
+      }
+      if (vendor?.user?.notificationToken) {
+        await notify(
+          vendor.user.notificationToken,
           "ORDER AUTOMATICALLY COMPLETED",
           "A payment has been released to your account.",
         );
       }
+
+      await pingOrderParties(order.id);
 
       console.log(`[EscrowJob] Released orderId=${escrow.orderId}`);
     } catch (err) {
@@ -104,8 +101,19 @@ export const runAutoReleaseJob = async () => {
   }
 };
 
+/**
+ * Auto-cancel orders left "pending" for 30 min (no payment / no vendor action).
+ *
+ * MONEY-SAFE refund routing — only move funds that actually exist:
+ *   • settlement hold  → reverse the hold (defensive; a paid order is already
+ *                        "confirmed", so this is effectively unreachable)
+ *   • legacy escrow    → unchanged locked-funds refund
+ *   • neither          → UNPAID prepaid or POD: cancel only, NO money moved
+ *
+ * (The old version unconditionally refunded locked funds, crediting money that
+ * was never taken for unpaid/POD orders.)
+ */
 export const runAutoCancelJob = async () => {
-  // Find orders still "pending" after 30 minutes with no vendor action
   const cutoff = new Date(Date.now() - 30 * 60 * 1000);
 
   const stale = await prisma.order.findMany({
@@ -114,64 +122,72 @@ export const runAutoCancelJob = async () => {
   });
 
   for (const order of stale) {
+    // Race-guarded flip so a concurrent payment/accept can't be clobbered.
     const updated = await prisma.order.updateMany({
-      where: { id: order.id },
+      where: { id: order.id, status: "pending" },
       data: { status: "cancelled", escrowStatus: "cancelled" },
     });
-
     if (updated.count === 0) continue;
+
+    try {
+      const hasHold =
+        (await settlementTablesReady()) &&
+        !!(await prisma.settlementHold.findUnique({
+          where: { orderId: order.id },
+        }));
+
+      if (hasHold) {
+        await refundHold({
+          orderId: order.id,
+          buyerId: order.userId,
+          reason: "auto_cancel",
+        });
+      } else if (order.escrow) {
+        await prisma.escrow.update({
+          where: { orderId: order.id },
+          data: { releaseStatus: "refunded" },
+        });
+        await WalletService.moveLockedToAvailableCredit({
+          userId: order.userId,
+          amount: order.totalAmount,
+        });
+        await WalletService.createCreditTransaction({
+          userId: order.userId,
+          amount: order.totalAmount,
+          type: TX_TYPE.ORDER_REFUND,
+          metaData: { orderId: order.id, vendorId: order.vendorId },
+        });
+      }
+      // else: UNPAID prepaid / POD — nothing was taken, nothing to refund.
+    } catch (err) {
+      console.error(`[AutoCancel] refund failed orderId=${order.id}`, err);
+    }
 
     const vendor = await prisma.vendor.findUnique({
       where: { id: order.vendorId },
       include: { user: { select: { notificationToken: true } } },
     });
-
     const user = await prisma.user.findUnique({
       where: { id: order.userId },
       select: { notificationToken: true },
     });
 
-    if (!vendor) continue;
-    if (!user) continue;
-
-    // Phase 6 refund routing (3-way):
-    //  • settlement hold → make the buyer whole (full gross) + reverse hold
-    //  • legacy escrow   → unchanged locked-funds refund
-    //  • neither (UNPAID prepaid order that was never paid) → cancel only,
-    //    NO money moved (nothing was ever taken).
-    if (await jobHasSettlementHold(order.id)) {
-      await refundHold({
-        orderId: order.id,
-        buyerId: order.userId,
-        reason: "auto_cancel",
-      });
-    } else if (order.escrow) {
-      await prisma.escrow.update({
-        where: { orderId: order.id },
-        data: { releaseStatus: "refunded" },
-      });
-      await WalletService.moveLockedToAvailableCredit({
-        userId: order.userId,
-        amount: order.totalAmount,
-      });
-      await WalletService.createCreditTransaction({
-        userId: order.userId,
-        amount: order.totalAmount,
-        type: TX_TYPE.ORDER_REFUND,
-        metaData: { orderId: order.id, vendorId: order.vendorId },
-      });
+    if (user?.notificationToken) {
+      await notify(
+        user.notificationToken,
+        "ORDER AUTOMATICALLY CANCELLED",
+        "Your order was automatically cancelled (no payment or no vendor response in time).",
+      );
+    }
+    if (vendor?.user?.notificationToken) {
+      await notify(
+        vendor.user.notificationToken,
+        "ORDER AUTOMATICALLY CANCELLED",
+        "An order was automatically cancelled (no payment or no response in time).",
+      );
     }
 
-    await notify(
-      user?.notificationToken!,
-      "ORDER AUTOMATICALLY CANCELLED",
-      "Your order has been automatically cancelled due to no response from the vendor.",
-    );
-
-    await notify(
-      vendor.user.notificationToken!,
-      "ORDER AUTOMATICALLY CANCELLED",
-      "An order has been automatically cancelled due to no response from you.",
-    );
+    // Realtime: reflect the cancellation live for both sides.
+    await pingOrderParties(order.id);
   }
 };

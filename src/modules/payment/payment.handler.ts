@@ -16,6 +16,7 @@
 import { prisma } from "../../prisma";
 import { PAYMENT_ENTITY, PAYMENT_PROVIDER } from "./payment.types";
 import { createPendingHold } from "../marketPlace/settlement/settlement.service";
+import { pingOrderParties } from "../marketPlace/order/orderPing";
 
 // A handler receives the SUCCESS payment and completes its side effect.
 // It MUST be idempotent: the recovery cron + webhook can both fire for the same
@@ -99,11 +100,21 @@ registerPaymentHandler(PAYMENT_ENTITY.MARKETPLACE_ORDER, async (payment) => {
     paymentId: payment.id,
   });
 
-  // 2) Confirm the order (vendor sees it as a new incoming order).
+  // 2) Confirm the order and record HOW it was actually paid (wallet|opay),
+  //    replacing the placeholder "prepaid" set at checkout.
   await prisma.order.update({
     where: { id: order.id },
-    data: { status: "confirmed", escrowStatus: "held" },
+    data: {
+      status: "confirmed",
+      escrowStatus: "held",
+      paymentMethod:
+        payment.provider === PAYMENT_PROVIDER.OPAY ? "opay" : "wallet",
+    },
   });
+
+  // 3) Realtime: now that it's paid + confirmed, ping so the vendor's list
+  //    refreshes and the new order appears without a manual refresh.
+  await pingOrderParties(order.id);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
