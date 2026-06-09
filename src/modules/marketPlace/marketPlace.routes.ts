@@ -8,6 +8,7 @@ import orderController from "./order/orderController";
 import uploadController from "./upload/uploadController";
 import vendorController from "./vendor/vendorController";
 import webController from "./web/webController";
+import tableController from "./table/tableController";
 import multer from "multer";
 
 
@@ -95,8 +96,22 @@ router.get("/location/hierarchy", optionalAuthMiddleware, locationController.get
 // wrapped with optionalAuthMiddleware, returning public-safe payloads.
 router.get("/web/store/:vendorId", optionalAuthMiddleware, webController.getStorePublic);
 router.get("/web/product/:menuItemId", optionalAuthMiddleware, webController.getProductPublic);
+router.get(
+  "/web/store/:vendorId/table/:tableId",
+  optionalAuthMiddleware,
+  tableController.getTablePublic,
+);
 // /web/store/:vendorId/table/:tableId → Phase 6
 // /web/post/:postId, /web/u/:userHandle → Phase 2 (social module)
+
+// ── DINE-IN TABLES ──────────────────────────────────────────────────────────
+// NOTE: /tables/:tableId/qr MUST come before /tables/:vendorId/:branchId,
+// otherwise Express captures "qr" as :branchId.
+router.post("/tables/create", authMiddleware, tableController.createTable);
+router.get("/tables/:tableId/qr", authMiddleware, tableController.getTableQr);
+router.get("/tables/:vendorId/:branchId", authMiddleware, tableController.listTables);
+router.put("/tables/:tableId", authMiddleware, tableController.updateTable);
+router.delete("/tables/:tableId", authMiddleware, tableController.deleteTable);
 
 
 export default router;

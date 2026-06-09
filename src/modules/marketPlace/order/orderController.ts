@@ -1,4 +1,4 @@
- import { prisma } from "../../../prisma";
+import { prisma } from "../../../prisma";
 import admin from "firebase-admin";
 import { sendNotification } from "../../../shared/utils/notification";
 import { generateUUID } from "../../../shared/utils/uuid";
@@ -23,6 +23,7 @@ import {
   settlementTablesReady,
 } from "../settlement/settlement.service";
 import { pingOrderParties } from "./orderPing";
+import { nextDailyOrderNumber } from "./orderNumber";
 
 /**
  * Phase 6: true when this order uses the new settlement-hold model. Legacy
@@ -66,8 +67,17 @@ const placeOrder = async (req: any, res: any) => {
 
     const notificationToken = user?.notificationToken;
 
-    const { vendorId, branchId, items, deliveryAddress, paymentMethod } =
-      req.body;
+    const {
+      vendorId,
+      branchId,
+      items,
+      deliveryAddress,
+      paymentMethod,
+      fulfillmentType = "delivery",
+      tableId,
+    } = req.body;
+
+    const isDineIn = fulfillmentType === "dine_in";
 
     const config = await prisma.appConfig.findFirst();
     if (!config)
@@ -96,13 +106,37 @@ const placeOrder = async (req: any, res: any) => {
       });
     }
 
-    const zone = branch.deliveryZones.find(
-      (z: any) => z.area === deliveryAddress.area,
-    );
-    if (!zone)
-      return res.status(400).json({
-        message: `No delivery zone set up for area: ${deliveryAddress.area}`,
+    // Delivery path uses the zone fee (existing logic). Dine-in has no delivery.
+    let deliveryFee = 0;
+    let dineTableNumber: string | null = null;
+
+    if (isDineIn) {
+      if (!tableId) {
+        return res
+          .status(400)
+          .json({ message: "tableId is required for dine-in" });
+      }
+      // Table must exist, be active, and belong to THIS vendor + branch.
+      const table = await prisma.restaurantTable.findFirst({
+        where: { id: tableId, vendorId, branchId, isActive: true },
       });
+      if (!table) {
+        return res.status(400).json({ message: "Invalid or inactive table" });
+      }
+      dineTableNumber = table.tableNumber;
+      // deliveryFee stays 0; no delivery-zone lookup, no address required.
+    } else {
+      // ── EXISTING delivery-zone resolution stays exactly as-is ──
+      // const zone = await prisma...; deliveryFee = zone.deliveryFee;
+      const zone = branch.deliveryZones.find(
+        (z: any) => z.area === deliveryAddress.area,
+      );
+      if (!zone)
+        return res.status(400).json({
+          message: `No delivery zone set up for area: ${deliveryAddress.area}`,
+        });
+      deliveryFee = zone.deliveryFee;
+    }
 
     let subtotal = 0;
     const enrichedItems: {
@@ -138,7 +172,6 @@ const placeOrder = async (req: any, res: any) => {
       subtotal += menuItem.price * reqItem.quantity;
     }
 
-    const deliveryFee = zone.deliveryFee;
     const transactionFee = subtotal * (config.transactionFeePercent / 100);
     const totalAmount = subtotal + deliveryFee + transactionFee;
 
@@ -160,6 +193,8 @@ const placeOrder = async (req: any, res: any) => {
     const isPod = paymentMethod === "pay_on_delivery";
     let order;
 
+    const orderNumber = isDineIn ? await nextDailyOrderNumber(branchId) : null;
+
     if (isPod) {
       // ── POD (pay on delivery) — CASH. No wallet involvement whatsoever. ─────
       // Created `pending`; the vendor accepts it (pending→confirmed). Commission
@@ -177,14 +212,19 @@ const placeOrder = async (req: any, res: any) => {
           status: "pending",
           escrowStatus: "noEscrow",
           paymentMethod: "pay_on_delivery",
-          deliveryState: deliveryAddress.state,
-          deliveryLga: deliveryAddress.lga,
-          deliveryArea: deliveryAddress.area,
-          deliveryStreet: deliveryAddress.street,
+          deliveryState: isDineIn ? "" : deliveryAddress.state,
+          deliveryLga: isDineIn ? "" : deliveryAddress.lga,
+          deliveryArea: isDineIn ? "" : deliveryAddress.area,
+          deliveryStreet: isDineIn ? "" : deliveryAddress.street,
           vendorName: branch.vendor.name,
           vendorLogo: branch.vendor.logo,
           branchName: `${branch.area}, ${branch.lga}`,
           items: { create: enrichedItems },
+
+          fulfillmentType, // NEW
+          tableId: isDineIn ? tableId : null, // NEW
+          tableNumber: dineTableNumber, // NEW (null for delivery)
+          orderNumber, // NEW (null for delivery)
         },
         include: { items: true },
       });
@@ -207,14 +247,19 @@ const placeOrder = async (req: any, res: any) => {
           status: "pending",
           escrowStatus: "held",
           paymentMethod,
-          deliveryState: deliveryAddress.state,
-          deliveryLga: deliveryAddress.lga,
-          deliveryArea: deliveryAddress.area,
-          deliveryStreet: deliveryAddress.street,
+          deliveryState: isDineIn ? "" : deliveryAddress.state,
+          deliveryLga: isDineIn ? "" : deliveryAddress.lga,
+          deliveryArea: isDineIn ? "" : deliveryAddress.area,
+          deliveryStreet: isDineIn ? "" : deliveryAddress.street,
           vendorName: branch.vendor.name,
           vendorLogo: branch.vendor.logo,
           branchName: `${branch.area}, ${branch.lga}`,
           items: { create: enrichedItems },
+
+          fulfillmentType, // NEW
+          tableId: isDineIn ? tableId : null, // NEW
+          tableNumber: dineTableNumber, // NEW (null for delivery)
+          orderNumber, // NEW (null for delivery)
         },
         include: { items: true },
       });
@@ -312,9 +357,9 @@ const confirmDelivery = async (req: any, res: any) => {
     if (order.userId !== userId)
       return res.status(403).json({ message: "Unauthorized" });
     if (order.paymentMethod === "pay_on_delivery")
-      return res
-        .status(400)
-        .json({ message: "Cash orders are completed by the seller, not here." });
+      return res.status(400).json({
+        message: "Cash orders are completed by the seller, not here.",
+      });
     if (order.status !== "delivered")
       return res
         .status(400)
