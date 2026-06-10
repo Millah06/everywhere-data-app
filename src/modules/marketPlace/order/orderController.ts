@@ -1,11 +1,9 @@
 import { prisma } from "../../../prisma";
 import admin from "firebase-admin";
 import { sendNotification } from "../../../shared/utils/notification";
-import { generateUUID } from "../../../shared/utils/uuid";
 import { Order } from "@prisma/client";
 import { WalletService } from "../../../shared/services/wallet.service";
 import {
-  prismaTransactionStatusToApi,
   withTransactionStatus,
 } from "../../../shared/utils/transactionResponse";
 import { FieldValue } from "firebase-admin/firestore";
@@ -25,6 +23,7 @@ import {
 import { pingOrderParties } from "./orderPing";
 import { nextDailyOrderNumber } from "./orderNumber";
 import { decodeCursor, parseLimit, buildPage, ORDER_BUCKETS } from "../utils/pagination";
+import { Prisma } from "@prisma/client";
 
 /**
  * Phase 6: true when this order uses the new settlement-hold model. Legacy
@@ -560,7 +559,7 @@ const getManagerOrders = async (req: any, res: any) => {
               { status: { not: "pending" } },
               { paymentMethod: "pay_on_delivery" },
             ],
-          },
+          } as Prisma.OrderWhereInput,
         ],
       },
       include: { items: true },
