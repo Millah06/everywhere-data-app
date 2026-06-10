@@ -24,6 +24,7 @@ import {
 } from "../settlement/settlement.service";
 import { pingOrderParties } from "./orderPing";
 import { nextDailyOrderNumber } from "./orderNumber";
+import { decodeCursor, parseLimit, buildPage, ORDER_BUCKETS } from "../utils/pagination";
 
 /**
  * Phase 6: true when this order uses the new settlement-hold model. Legacy
@@ -310,16 +311,29 @@ const placeOrder = async (req: any, res: any) => {
 const getMyOrders = async (req: any, res: any) => {
   try {
     const userId = req.user?.id;
+    const { bucket, status, cursor, limit } = req.query;
 
-    const { status } = req.query;
+    const take = parseLimit(limit, 20, 50);
+    const decoded = decodeCursor(cursor);
 
-    const orders = await prisma.order.findMany({
-      where: { userId, ...(status && { status: status as any }) },
+    // `bucket` (ongoing|completed|cancelled|appealed) drives the tabs and is the
+    // preferred filter. Single `status` is still honoured for backward-compat.
+    const statusFilter =
+      bucket && ORDER_BUCKETS[bucket]
+        ? { status: { in: ORDER_BUCKETS[bucket] as any } }
+        : status
+        ? { status: status as any }
+        : {};
+
+    const rows = await prisma.order.findMany({
+      where: { userId, ...statusFilter },
       include: { items: true },
-      orderBy: { createdAt: "desc" },
+      orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+      take: take + 1,
+      ...(decoded ? { cursor: { id: decoded.id }, skip: 1 } : {}),
     });
 
-    res.json(orders);
+    res.json(buildPage(rows, take));
   } catch (e: any) {
     res.status(401).json({ message: e.message });
   }
@@ -519,34 +533,43 @@ const appealOrder = async (req: any, res: any) => {
 const getManagerOrders = async (req: any, res: any) => {
   try {
     const userId = req.user?.id;
+    const { bucket, status, cursor, limit } = req.query;
 
-    const { status } = req.query;
+    const take = parseLimit(limit, 20, 50);
+    const decoded = decodeCursor(cursor);
 
-    const branches = await prisma.branch.findMany({
-      where: { managerId: userId },
-    });
+    const statusFilter =
+      bucket && ORDER_BUCKETS[bucket]
+        ? { status: { in: ORDER_BUCKETS[bucket] as any } }
+        : status
+        ? { status: status as any }
+        : {};
 
-    if (!branches) return res.status(404).json({ message: "Branch not found" });
-
-    const orders = await prisma.order.findMany({
+    // Everything is AND-ed so the keyset cursor and the two independent filters
+    // (bucket + the unpaid-prepaid visibility OR) don't collide.
+    const rows = await prisma.order.findMany({
       where: {
-        branch: {
-          managerId: userId,
-        },
-        ...(status && { status: status as any }),
-        // Hide UNPAID prepaid orders (status "pending" + not POD). A prepaid
-        // order only becomes visible to the vendor once payment confirms it
-        // (pending→confirmed). POD "pending" stays visible for acceptance.
-        OR: [
-          { status: { not: "pending" } },
-          { paymentMethod: "pay_on_delivery" },
+        AND: [
+          { branch: { managerId: userId } },
+          statusFilter,
+          // Hide UNPAID prepaid orders (status "pending" + not POD): a prepaid
+          // order only becomes visible to the vendor once payment confirms it.
+          // POD "pending" stays visible for acceptance.
+          {
+            OR: [
+              { status: { not: "pending" } },
+              { paymentMethod: "pay_on_delivery" },
+            ],
+          },
         ],
       },
       include: { items: true },
-      orderBy: { createdAt: "desc" },
+      orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+      take: take + 1,
+      ...(decoded ? { cursor: { id: decoded.id }, skip: 1 } : {}),
     });
 
-    res.json(orders);
+    res.json(buildPage(rows, take));
   } catch (e: any) {
     res.status(401).json({ message: e.message });
   }

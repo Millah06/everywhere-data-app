@@ -1,4 +1,5 @@
 import { prisma } from "../../../prisma";
+import { decodeCursor, parseLimit, buildPage } from "../utils/pagination";
 
 const addMenuItem = async (req: any, res: any) => {
   try {
@@ -115,17 +116,19 @@ const toggleMenuItemAvailability = async (req: any, res: any) => {
 const getManagerBranchesMenu = async (req: any, res: any) => {
   try {
     const userId = req.user?.id;
-    
-    const menuItems = await prisma.menuItem.findMany({
-      where: {
-        branch: {
-          managerId: userId
-        },
-      },
-       orderBy: { createdAt: "desc" },
+    const { cursor, limit } = req.query;
+
+    const take = parseLimit(limit, 50, 100);
+    const decoded = decodeCursor(cursor);
+
+    const rows = await prisma.menuItem.findMany({
+      where: { branch: { managerId: userId } },
+      orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+      take: take + 1,
+      ...(decoded ? { cursor: { id: decoded.id }, skip: 1 } : {}),
     });
 
-    res.json(menuItems);
+    res.json(buildPage(rows, take));
   } catch (e: any) {
     res.status(401).json({ message: e.message });
   }

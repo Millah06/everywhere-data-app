@@ -1,49 +1,59 @@
 import { prisma } from "../../../prisma";
 import admin from "firebase-admin";
 import { requireMainBranch } from "../branch/branchAuth";
+import { decodeCursor, encodeCursor, parseLimit, buildPage } from "../utils/pagination";
 
 const getVendors = async (req: any, res: any) => {
   try {
-    const { vendorType, state, lga, search, sortBy } = req.query;
+    const { vendorType, state, lga, search, sortBy, cursor, limit } = req.query;
 
+    // Page size: default 20, hard cap 50.
+    const take = parseLimit(limit, 20, 50);
+    const decoded = decodeCursor(cursor);
+
+    // Same filters as before — unchanged behaviour.
     const where: any = { status: "approved", isVisible: true };
     if (vendorType) where.vendorType = vendorType;
     if (search) where.name = { contains: search, mode: "insensitive" };
     if (state || lga) {
-      where.branches = {
-        some: { ...(state && { state }), ...(lga && { lga }) },
-      };
+      where.branches = { some: { ...(state && { state }), ...(lga && { lga }) } };
     }
 
-    const vendors = await prisma.vendor.findMany({
+    // ── Sort key ────────────────────────────────────────────────────────────
+    // Keyset pagination needs a REAL DB column to order by. The old default
+    // "rating" sort was an in-memory composite (rating + completionRate +
+    // normalized orders) that required loading every vendor and a global max on
+    // each call — not paginable and expensive. We now sort on an indexed column
+    // with `id` as the stable tiebreak. `completionRate`/`totalCompletedOrders`
+    // already map 1:1; everything else defaults to `rating`.
+    const sortColumn =
+      sortBy === "completionRate"
+        ? "completionRate"
+        : sortBy === "totalCompletedOrders"
+        ? "totalCompletedOrders"
+        : "rating";
+
+    const rows = await prisma.vendor.findMany({
       where,
-      include: { branches: { include: { deliveryZones: true } } , 
-      trustProfile: { select: { level: true } }},
-// then in the response shape: trustLevel: vendor.trustProfile?.level ?? null
+      include: {
+        branches: { include: { deliveryZones: true } },
+        trustProfile: { select: { level: true } },
+      },
+      orderBy: [{ [sortColumn]: "desc" }, { id: "asc" }],
+      take: take + 1, // over-fetch one to detect hasMore
+      ...(decoded ? { cursor: { id: decoded.id }, skip: 1 } : {}),
     });
 
-    const maxOrders = Math.max(
-      ...vendors.map((v: any) => v.totalCompletedOrders as number),
-      1,
-    );
+    const page = buildPage(rows, take);
 
-    const sorted = vendors.sort((a: any, b: any) => {
-      if (sortBy === "completionRate")
-        return b.completionRate - a.completionRate;
-      if (sortBy === "totalCompletedOrders")
-        return b.totalCompletedOrders - a.totalCompletedOrders;
-      const scoreA =
-        (a.rating / 5) * 0.5 +
-        (a.completionRate / 100) * 0.3 +
-        (a.totalCompletedOrders / maxOrders) * 0.2;
-      const scoreB =
-        (b.rating / 5) * 0.5 +
-        (b.completionRate / 100) * 0.3 +
-        (b.totalCompletedOrders / maxOrders) * 0.2;
-      return scoreB - scoreA;
-    });
+    // Flatten trustProfile.level → trustLevel for the client (VendorModel reads
+    // either trustLevel or trustProfile.level, but we keep the explicit field).
+    const data = page.data.map((v: any) => ({
+      ...v,
+      trustLevel: v.trustProfile?.level ?? null,
+    }));
 
-    res.json(sorted);
+    res.json({ data, meta: page.meta });
   } catch (e: any) {
     res.status(401).json({ message: e.message });
   }

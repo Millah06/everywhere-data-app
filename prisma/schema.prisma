@@ -607,6 +607,8 @@ model Vendor {
   fulfillmentTypes String[]              @default(["delivery"])
 
   user User              @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([status, isVisible, rating, id])
 }
 
 model Branch {
@@ -666,6 +668,8 @@ model MenuItem {
 
   branch     Branch      @relation(fields: [branchId], references: [id], onDelete: Cascade)
   orderItems OrderItem[]
+
+  @@index([branchId, createdAt, id])
 }
 
 model Order {
@@ -715,6 +719,9 @@ model Order {
   @@index([userId])
   @@index([status])
   @@index([branchId])
+
+  @@index([userId, createdAt, id])
+  @@index([branchId, createdAt, id])
 }
 
 model OrderItem {
