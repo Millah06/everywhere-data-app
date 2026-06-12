@@ -6,6 +6,7 @@ import updateMeController from "../controllers/updateMe.controller";
 import updateProfileController from "../controllers/updateProfile.controller";
 import multer from "multer";
 import checkUserHandleController from "../controllers/checkUserHandle";
+import updateRegionController from "../controllers/updateRegion.controller";
 
 
 const  upload = multer({ storage: multer.memoryStorage(), 
@@ -63,6 +64,12 @@ router.get(
   "/users/check-handle/:userHandle",
   authMiddleware,
   checkUserHandleController.checkUserHandle,
+);
+
+router.patch(
+  "/users/me/region",
+  authMiddleware,
+  updateRegionController.updateRegion
 );
 
 export default router;

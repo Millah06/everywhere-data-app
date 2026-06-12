@@ -18,6 +18,10 @@ export const getMe = async (req: any, res: any) => {
         name: true,
         email: true,
         phone: true,
+        // PHASE 9 — region fields the client gate reads
+        country: true,
+        currency: true,
+        timezone: true,
         role: true,
         active: true,
         referralCode: true,
