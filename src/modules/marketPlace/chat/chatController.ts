@@ -23,10 +23,12 @@ const sendMessage = async (req: any, res: any) => {
     const order = await prisma.order.findUnique({ where: { id: orderId } });
     if (!order) return res.status(404).json({ message: "Order not found" });
 
+    // Only match the vendor if THIS user owns it — otherwise any vendor
+    // could post to any order's chat. (ownerId and userId are Postgres ids.)
     const vendor = await prisma.vendor.findFirst({
-      where: { id: order.vendorId},
+      where: { id: order.vendorId, ownerId: userId },
     });
-    
+
     const isBuyer = order.userId === userId;
     const isVendor = !!vendor;
 

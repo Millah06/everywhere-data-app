@@ -83,6 +83,23 @@ enum EscrowStatus {
   cancelled
 }
 
+enum CoinPurchaseSource { 
+  apple_iap 
+  google_play 
+  wallet_ngn 
+  opay_ngn 
+} // add opay_ngn for web purchases
+
+enum CoinPurchaseStatus {
+   PENDING 
+   SUCCESS 
+   FAILED 
+   REFUNDED
+}
+
+
+
+
 // ── MODELS ───────────────────────────────────────────────────────────────────
 
 model User {
@@ -127,6 +144,7 @@ model User {
   badges         Badges?
   coins            UserCoins?
   creatorStats     CreatorStats?
+  hideFromLeaderboard Boolean @default(false) // opt out of public Spotlight boards
   virtualAccount VirtualAccount[]
   wallet         Wallet?
   orders         Order[]
@@ -151,6 +169,8 @@ model User {
   sentGifts        GiftTransaction[] @relation("GiftSender")
   receivedGifts    GiftTransaction[] @relation("GiftReceiver")
   coinConversions  CoinConversion[]  @relation("CoinConversions")
+  coinPurchases    CoinPurchase[] @relation("CoinPurchases")
+  coinBoosts       CoinBoost[]    @relation("CoinBoosts")
 
   @@index([firebaseUid, createdAt])
   @@index([email])
@@ -569,9 +589,9 @@ model Notification {
 model Vendor {
   id                   String     @id @default(uuid())
 
-  ownerId              String // Firebase UID of the vendor owner
+  ownerId              String // Postgres User.id of the vendor owner (FK -> User.id below)
 
-  ownerFirebaseUid     String
+  ownerFirebaseUid     String // LEGACY/UNUSED: kept for back-compat; ownerId is the real link. Drop in a future migration.
 
   vendorType           VendorType
   name                 String
@@ -674,7 +694,7 @@ model MenuItem {
 
 model Order {
   id             String       @id @default(uuid())
-  userId         String // Firebase UID of buyer
+  userId         String // Postgres User.id of buyer (FK -> User.id)
   userName       String @default("User") // snapshot at order time
   vendorId       String
   branchId       String
@@ -863,8 +883,11 @@ model UserCoins {
   id           String   @id @default(uuid())
   userId       String   @unique
   balance      Int      @default(0) // Total coins available
+  purchasedCoins Int     @default(0) // ADD — spend-only (IAP / NG wallet); NEVER converts
+  earnedCoins    Int     @default(0) // ADD — received via gifts; ONLY these convert (NG-tied)
   totalEarned  Int      @default(0) // Lifetime coins earned (creators)
   totalSpent   Int      @default(0) // Lifetime coins spent (gifters)
+  totalPurchased Int     @default(0) // ADD — lifetime purchased coins
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -873,11 +896,44 @@ model UserCoins {
   @@index([userId])
 }
 
+model CoinPurchase {
+  id            String             @id @default(uuid())
+  userId        String
+  source        CoinPurchaseSource
+  coins         Int
+  amount        Float              @default(0) // NGN charged (wallet) | 0 for IAP (store holds cash)
+  currency      String             @default("NGN")
+  productId     String?            // store SKU / pack id
+  platformToken String?            @unique     // Apple transaction_id | Google orderId | wallet clientRequestId — idempotency
+  status        CoinPurchaseStatus @default(PENDING)
+  verified      Boolean            @default(false)
+  rawReceipt    Json?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  user User @relation("CoinPurchases", fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, createdAt])
+  @@index([status])
+}
+
+model CoinBoost {
+  id          String   @id @default(uuid())
+  userId      String
+  postId      String
+  coinsSpent  Int
+  durationHrs Int
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+  user User @relation("CoinBoosts", fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, createdAt])
+  @@index([postId])
+}
+
 model GiftTransaction {
   id              String   @id @default(uuid())
   senderId        String
   receiverId      String
-  postId          String
+  postId String?   // was: String  (now optional — user gifts have no post)
+  // ...consider adding giftMessage or giftImageUrl for personalization?
   giftType        String   // "rose" | "coffee" | "fire" | "diamond" | "rocket" | "crown"
   coinAmount      Int      // Coins sent
   nairaEquivalent Float    // Money deducted (coinAmount / 10)

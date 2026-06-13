@@ -19,6 +19,7 @@ export const getMe = async (req: any, res: any) => {
         email: true,
         phone: true,
         // PHASE 9 — region fields the client gate reads
+        hideFromLeaderboard: true,
         country: true,
         currency: true,
         timezone: true,

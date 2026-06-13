@@ -7,6 +7,7 @@ import updateProfileController from "../controllers/updateProfile.controller";
 import multer from "multer";
 import checkUserHandleController from "../controllers/checkUserHandle";
 import updateRegionController from "../controllers/updateRegion.controller";
+import { updateLeaderboardVisibility } from "../controllers/updateLeaderboardVisibility.controller";
 
 
 const  upload = multer({ storage: multer.memoryStorage(), 
@@ -71,5 +72,7 @@ router.patch(
   authMiddleware,
   updateRegionController.updateRegion
 );
+
+router.patch('/users/me/leaderboard-visibility', authMiddleware, updateLeaderboardVisibility);
 
 export default router;

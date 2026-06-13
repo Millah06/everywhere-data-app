@@ -1,12 +1,32 @@
-// backend/controllers/giftController.ts
+// src/modules/social/controllers/giftController.ts
+//
+// PHASE 10 — gifting + conversion + balance, on the purchased/earned split.
+// FULL FILE — replace your existing giftController.ts wholesale.
+//
+//   sendGift            spend coins (purchased-first, then earned) → receiver gets
+//                       EARNED coins. NO wallet fallback (real money never enters
+//                       a gift).
+//   convertCoinsToNaira EARNED coins only, NG-tied users only → wallet credit.
+//   getUserCoinBalance  returns the split (purchased / earned / convertible).
+//   getCreatorStats     unchanged.
+//   getTopEarners       unchanged.
 
 import { prisma } from "../../../prisma";
-import { deductWallet, creditWallet, getWalletBalance } from "../../../shared/helpers/wallet.helpers";
+import { creditWallet } from "../../../shared/helpers/wallet.helpers";
+import {
+  getCoinRates,
+  coinsToNaira,
+  isNgTied,
+  spendCoins,
+  creditEarnedCoins,
+  debitEarnedForConversion,
+  getOrCreateLedger,
+} from "../../../shared/helpers/coin.helpers";
 
-const DAILY_GIFT_LIMIT_NAIRA = 50000; // ₦50,000 daily limit
-const PLATFORM_FEE_PERCENT = 0.05; // 5%
+const DAILY_GIFT_LIMIT_NAIRA = 50000; // ₦50,000/day anti-abuse cap
+const PLATFORM_FEE_PERCENT = 0.05; // 5% breakage = platform revenue
 
-// Gift types with their coin values
+// Gift catalog — coin cost per gift. Keep in sync with the Flutter GiftType model.
 const GIFT_TYPES = {
   rose: { coins: 10, emoji: "🌹", name: "Rose" },
   coffee: { coins: 20, emoji: "☕", name: "Coffee" },
@@ -15,203 +35,108 @@ const GIFT_TYPES = {
   rocket: { coins: 500, emoji: "🚀", name: "Rocket" },
   crown: { coins: 1000, emoji: "👑", name: "Crown" },
 } as const;
-
 type GiftType = keyof typeof GIFT_TYPES;
 
-// Convert naira to coins (₦1 = 10 coins)
-const nairaToCoins = (naira: number): number => Math.floor(naira * 10);
-const coinsToNaira = (coins: number): number => coins / 10;
-
+// ─────────────────────────────────────────────────────────────────────────────
 const sendGift = async (req: any, res: any) => {
   const senderId = req.user?.id;
   const { postId, giftType } = req.body;
-
-  console.log("=== SEND GIFT START ===");
-  console.log("Sender:", senderId);
-  console.log("Post:", postId);
-  console.log("Gift Type:", giftType);
-
   try {
     if (!senderId || !postId || !giftType) {
       return res.status(400).json({ error: "Missing required fields" });
     }
-
     if (!GIFT_TYPES[giftType as GiftType]) {
       return res.status(400).json({ error: "Invalid gift type" });
     }
 
     const gift = GIFT_TYPES[giftType as GiftType];
     const coinAmount = gift.coins;
-    const nairaEquivalent = coinsToNaira(coinAmount);
-    const platformFee = nairaEquivalent * PLATFORM_FEE_PERCENT;
-    const coinsAwarded = nairaToCoins(nairaEquivalent - platformFee);
 
-    console.log(`Gift: ${gift.name} (${coinAmount} coins = ₦${nairaEquivalent})`);
-
-    // Get post
     const post = await prisma.post.findUnique({
       where: { id: postId },
       select: { userId: true },
     });
-
-    if (!post) {
-      return res.status(404).json({ error: "Post not found" });
-    }
-
+    if (!post) return res.status(404).json({ error: "Post not found" });
     const receiverId = post.userId;
-
     if (senderId === receiverId) {
-      return res.status(400).json({ error: "Cannot gift your own post" });
+      return res.status(400).json({ error: "You can't gift your own post" });
     }
 
-    // Check daily limit
-    const today = new Date().toISOString().split("T")[0];
-    const dailyLimit = await prisma.userDailyLimit.findUnique({
+    const { purchaseRateNgn } = await getCoinRates();
+    const nairaEquivalent = coinsToNaira(coinAmount, purchaseRateNgn); // display + limit only
+    const platformFee = nairaEquivalent * PLATFORM_FEE_PERCENT;
+    const coinsAwarded = Math.floor(coinAmount * (1 - PLATFORM_FEE_PERCENT));
+
+    // Daily anti-abuse limit (naira-equivalent).
+    const today = new Date().toISOString().slice(0, 10);
+    const todayLimit = await prisma.userDailyLimit.findUnique({
       where: { userId_date: { userId: senderId, date: today } },
     });
-
-    if (dailyLimit && dailyLimit.totalSpent >= DAILY_GIFT_LIMIT_NAIRA) {
-      return res.status(400).json({
-        error: `Daily gift limit of ₦${DAILY_GIFT_LIMIT_NAIRA.toLocaleString()} reached`,
-      });
+    if ((todayLimit?.totalSpent ?? 0) + nairaEquivalent > DAILY_GIFT_LIMIT_NAIRA) {
+      return res.status(400).json({ error: "Daily gifting limit reached" });
     }
 
-    // Get or create sender's coin balance
-    let senderCoins = await prisma.userCoins.findUnique({
-      where: { userId: senderId },
-    });
+    let split: { fromPurchased: number; fromEarned: number } | undefined;
+    try {
+      await prisma.$transaction(async (tx) => {
+        // Coins ONLY — purchased-first, then earned. No wallet fallback.
+        split = await spendCoins(tx, senderId, coinAmount);
+        // Receiver gets EARNED (convertible) coins.
+        await creditEarnedCoins(tx, receiverId, coinsAwarded);
 
-    if (!senderCoins) {
-      senderCoins = await prisma.userCoins.create({
-        data: { userId: senderId },
+        await tx.creatorStats.upsert({
+          where: { userId: receiverId },
+          create: {
+            userId: receiverId,
+            totalCoinsEarned: coinsAwarded,
+            totalGiftsReceived: 1,
+            weeklyCoins: coinsAwarded,
+            weeklyResetAt: new Date(Date.now() + 7 * 86400000),
+          },
+          update: {
+            totalCoinsEarned: { increment: coinsAwarded },
+            totalGiftsReceived: { increment: 1 },
+            weeklyCoins: { increment: coinsAwarded },
+            lastUpdated: new Date(),
+          },
+        });
+
+        await tx.post.update({
+          where: { id: postId },
+          data: { giftCount: { increment: 1 }, coinTotal: { increment: coinsAwarded } },
+        });
+
+        await tx.giftTransaction.create({
+          data: {
+            senderId, receiverId, postId, giftType,
+            coinAmount, nairaEquivalent, platformFee, coinsAwarded,
+          },
+        });
+
+        await tx.userDailyLimit.upsert({
+          where: { userId_date: { userId: senderId, date: today } },
+          create: { userId: senderId, date: today, totalSpent: nairaEquivalent, giftCount: 1, lastGiftAt: new Date() },
+          update: { totalSpent: { increment: nairaEquivalent }, giftCount: { increment: 1 }, lastGiftAt: new Date() },
+        });
       });
-    }
-
-    // Auto-convert if insufficient coins
-    if (senderCoins.balance < coinAmount) {
-      const coinsNeeded = coinAmount - senderCoins.balance;
-      const nairaNeeded = coinsToNaira(coinsNeeded);
-
-      console.log(`Insufficient coins. Need ${coinsNeeded} more (₦${nairaNeeded})`);
-
-      // Check wallet balance
-      const walletBalance = await getWalletBalance(senderId);
-      if (walletBalance < nairaNeeded) {
+    } catch (e: any) {
+      if (e?.code === "INSUFFICIENT_COINS") {
         return res.status(400).json({
-          error: "Insufficient funds",
-          coinsNeeded,
-          nairaNeeded,
-          walletBalance,
+          error: "Not enough coins", code: "INSUFFICIENT_COINS", available: e.available,
         });
       }
-
-      // Auto-convert naira → coins
-      console.log(`Auto-converting ₦${nairaNeeded} → ${coinsNeeded} coins`);
-      await deductWallet(senderId, nairaNeeded);
-      
-      await prisma.userCoins.update({
-        where: { userId: senderId },
-        data: { balance: { increment: coinsNeeded } },
-      });
-
-      senderCoins.balance += coinsNeeded;
+      throw e;
     }
 
-    // Use Prisma transaction for atomicity
-    const result = await prisma.$transaction(async (tx) => {
-      // Deduct coins from sender
-      await tx.userCoins.update({
-        where: { userId: senderId },
-        data: {
-          balance: { decrement: coinAmount },
-          totalSpent: { increment: coinAmount },
-        },
-      });
-
-      // Award coins to receiver
-      await tx.userCoins.upsert({
-        where: { userId: receiverId },
-        create: {
-          userId: receiverId,
-          balance: coinsAwarded,
-          totalEarned: coinsAwarded,
-        },
-        update: {
-          balance: { increment: coinsAwarded },
-          totalEarned: { increment: coinsAwarded },
-        },
-      });
-
-      // Update creator stats
-      await tx.creatorStats.upsert({
-        where: { userId: receiverId },
-        create: {
-          userId: receiverId,
-          totalCoinsEarned: coinsAwarded,
-          totalGiftsReceived: 1,
-          weeklyCoins: coinsAwarded,
-          weeklyResetAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-        },
-        update: {
-          totalCoinsEarned: { increment: coinsAwarded },
-          totalGiftsReceived: { increment: 1 },
-          weeklyCoins: { increment: coinsAwarded },
-          lastUpdated: new Date(),
-        },
-      });
-
-      // Update post
-      await tx.post.update({
-        where: { id: postId },
-        data: {
-          giftCount: { increment: 1 },
-          coinTotal: { increment: coinsAwarded },
-        },
-      });
-
-      // Create gift transaction record
-      const giftTx = await tx.giftTransaction.create({
-        data: {
-          senderId,
-          receiverId,
-          postId,
-          giftType,
-          coinAmount,
-          nairaEquivalent,
-          platformFee,
-          coinsAwarded,
-        },
-      });
-
-      // Update daily limit
-      await tx.userDailyLimit.upsert({
-        where: { userId_date: { userId: senderId, date: today } },
-        create: {
-          userId: senderId,
-          date: today,
-          totalSpent: nairaEquivalent,
-          giftCount: 1,
-          lastGiftAt: new Date(),
-        },
-        update: {
-          totalSpent: { increment: nairaEquivalent },
-          giftCount: { increment: 1 },
-          lastGiftAt: new Date(),
-        },
-      });
-
-      return giftTx;
-    });
-
-    console.log("=== GIFT SENT SUCCESSFULLY ===");
-
-    res.json({
+    return res.json({
       success: true,
       giftType: gift.name,
       giftEmoji: gift.emoji,
       coinsSent: coinAmount,
       coinsAwarded,
       platformFee,
+      spentFromPurchased: split?.fromPurchased ?? 0,
+      spentFromEarned: split?.fromEarned ?? 0,
     });
   } catch (error: any) {
     console.error("=== SEND GIFT ERROR ===", error);
@@ -219,71 +144,52 @@ const sendGift = async (req: any, res: any) => {
   }
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
 const convertCoinsToNaira = async (req: any, res: any) => {
   const userId = req.user?.id;
   const { coinAmount } = req.body;
-
-  console.log("=== CONVERT COINS START ===");
-  console.log("User:", userId);
-  console.log("Coins:", coinAmount);
-
   try {
-    if (!userId || !coinAmount) {
-      return res.status(400).json({ error: "Missing required fields" });
-    }
+    if (!userId || !coinAmount) return res.status(400).json({ error: "Missing required fields" });
 
-    const MIN_CONVERSION = 100; // Minimum 100 coins (₦10)
+    const MIN_CONVERSION = 100;
     if (coinAmount < MIN_CONVERSION) {
-      return res.status(400).json({
-        error: `Minimum conversion is ${MIN_CONVERSION} coins`,
-      });
+      return res.status(400).json({ error: `Minimum conversion is ${MIN_CONVERSION} coins` });
     }
 
-    const userCoins = await prisma.userCoins.findUnique({
-      where: { userId },
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { phone: true, country: true },
     });
-
-    if (!userCoins || userCoins.balance < coinAmount) {
-      return res.status(400).json({
-        error: "Insufficient coins",
-        available: userCoins?.balance || 0,
+    if (!user || !isNgTied(user)) {
+      return res.status(403).json({
+        error: "Coin conversion is available to Nigeria-tied accounts only",
+        code: "REGION_BLOCKED",
       });
     }
 
-    const nairaAmount = coinsToNaira(coinAmount);
+    const ledger = await getOrCreateLedger(prisma, userId);
+    if (ledger.earnedCoins < coinAmount) {
+      return res.status(400).json({
+        error: "Insufficient earned coins (only gifted coins can be converted)",
+        code: "INSUFFICIENT_EARNED_COINS",
+        available: ledger.earnedCoins,
+      });
+    }
+
+    const { conversionRate } = await getCoinRates();
+    const nairaAmount = coinsToNaira(coinAmount, conversionRate);
 
     await prisma.$transaction(async (tx) => {
-      // Deduct coins
-      await tx.userCoins.update({
-        where: { userId },
-        data: { balance: { decrement: coinAmount } },
-      });
-
-      // Credit wallet
+      await debitEarnedForConversion(tx, userId, coinAmount); // never touches purchased
       await creditWallet(userId, nairaAmount);
-
-      // Update creator stats
       await tx.creatorStats.update({
         where: { userId },
-        data: {
-          totalNairaEarned: { increment: nairaAmount },
-          lastUpdated: new Date(),
-        },
+        data: { totalNairaEarned: { increment: nairaAmount }, lastUpdated: new Date() },
       });
-
-      // Log conversion
-      await tx.coinConversion.create({
-        data: {
-          userId,
-          coinAmount,
-          nairaAmount,
-        },
-      });
+      await tx.coinConversion.create({ data: { userId, coinAmount, nairaAmount } });
     });
 
-    console.log("=== CONVERSION SUCCESS ===");
-
-    res.json({
+    return res.json({
       success: true,
       coinsConverted: coinAmount,
       nairaReceived: nairaAmount,
@@ -295,46 +201,44 @@ const convertCoinsToNaira = async (req: any, res: any) => {
   }
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
 const getUserCoinBalance = async (req: any, res: any) => {
   const userId = req.user?.id;
-
   try {
-    const coins = await prisma.userCoins.findUnique({
-      where: { userId },
+    const ledger = await getOrCreateLedger(prisma, userId);
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { phone: true, country: true },
     });
-
+    const ngTied = !!user && isNgTied(user);
     res.json({
       success: true,
-      balance: coins?.balance || 0,
-      totalEarned: coins?.totalEarned || 0,
-      totalSpent: coins?.totalSpent || 0,
+      balance: ledger.balance, // legacy total = purchased + earned
+      purchasedCoins: ledger.purchasedCoins,
+      earnedCoins: ledger.earnedCoins,
+      convertibleCoins: ngTied ? ledger.earnedCoins : 0,
+      canConvert: ngTied,
+      totalEarned: ledger.totalEarned,
+      totalSpent: ledger.totalSpent,
+      totalPurchased: ledger.totalPurchased,
     });
   } catch (error: any) {
     res.status(500).json({ error: "Failed to fetch coin balance" });
   }
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// UNCHANGED below.
 const getCreatorStats = async (req: any, res: any) => {
   const userId = req.user?.id;
-
   try {
-    const stats = await prisma.creatorStats.findUnique({
-      where: { userId },
-    });
-
+    const stats = await prisma.creatorStats.findUnique({ where: { userId } });
     if (!stats) {
       return res.json({
         success: true,
-        stats: {
-          totalCoinsEarned: 0,
-          totalNairaEarned: 0,
-          totalGiftsReceived: 0,
-          weeklyCoins: 0,
-          level: 1,
-        },
+        stats: { totalCoinsEarned: 0, totalNairaEarned: 0, totalGiftsReceived: 0, weeklyCoins: 0, level: 1 },
       });
     }
-
     res.json({
       success: true,
       stats: {
@@ -351,23 +255,13 @@ const getCreatorStats = async (req: any, res: any) => {
   }
 };
 
-const getTopEarners = async (req: any, res: any) => {
+const getTopEarners = async (_req: any, res: any) => {
   try {
     const topCreators = await prisma.creatorStats.findMany({
-      orderBy: { weeklyCoins: 'desc' },
+      orderBy: { weeklyCoins: "desc" },
       take: 10,
-      include: {
-        user: {
-          select: {
-            name: true,
-            userProfile: {
-              select: { avatarUrl: true },
-            },
-          },
-        },
-      },
+      include: { user: { select: { name: true, userProfile: { select: { avatarUrl: true } } } } },
     });
-
     const earners = topCreators.map((stats) => ({
       userId: stats.userId,
       userName: stats.user.name,
@@ -377,18 +271,11 @@ const getTopEarners = async (req: any, res: any) => {
       totalNaira: stats.totalNairaEarned,
       level: stats.level,
     }));
-
     res.json({ success: true, earners });
   } catch (error: any) {
-    console.error('Get top earners error:', error);
-    res.status(500).json({ error: 'Failed to fetch leaderboard' });
+    console.error("Get top earners error:", error);
+    res.status(500).json({ error: "Failed to fetch leaderboard" });
   }
 };
 
-export default {
-  sendGift,
-  convertCoinsToNaira,
-  getUserCoinBalance,
-  getCreatorStats,
-  getTopEarners, // ADD THIS
-};
+export default { sendGift, convertCoinsToNaira, getUserCoinBalance, getCreatorStats, getTopEarners };

@@ -97,6 +97,7 @@ export const PAYMENT_ENTITY = {
   MARKETPLACE_ORDER: "marketplace_order",
   UTILITY: "utility",
   DINE_IN_ORDER: "dine_in_order",
+  COIN_PURCHASE: "coin_purchase", // ADD
 } as const;
 export type PaymentEntity =
   (typeof PAYMENT_ENTITY)[keyof typeof PAYMENT_ENTITY];

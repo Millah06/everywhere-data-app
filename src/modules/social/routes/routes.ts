@@ -9,6 +9,11 @@ import repostController from "../controllers/repostController";
 import socialController from "../controllers/socialController";
 import viewController from "../controllers/viewController";
 import giftController from '../controllers/giftController';
+import "../controllers/coin.payment.handler"; // registers the coin_purchase handler
+import coinController from '../controllers/coinController';
+import spotlightController from '../controllers/spotlightController';
+
+
 import multer from "multer";
 
 
@@ -88,5 +93,16 @@ router.post('/coins/convert', authMiddleware, giftController.convertCoinsToNaira
 router.get('/coins/balance', authMiddleware, giftController.getUserCoinBalance);
 router.get('/creator/stats', authMiddleware, giftController.getCreatorStats);
 router.get('/social/leaderboard', giftController.getTopEarners);
+// router.post('/gifts/send-user', authMiddleware, giftController.sendUserGift);
+
+// Coin catalog + non-NG IAP + boost (Phase 10)
+router.get('/coins/catalog',        authMiddleware, coinController.getCoinCatalog);
+router.post('/coins/purchase/iap',  authMiddleware, coinController.verifyIapPurchase);
+router.post('/social/boost',        authMiddleware, coinController.boostPost);
+
+
+router.get('/social/spotlight/creators',   optionalAuthMiddleware, spotlightController.getTopCreators);
+router.get('/social/spotlight/supporters', optionalAuthMiddleware, spotlightController.getTopSupporters);
+
 
 export default router;
