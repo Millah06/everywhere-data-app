@@ -6,6 +6,7 @@ import {
 } from "../modules/marketPlace/escow/autoReleaseJob";
 import { runTrustUpgradeJob } from "../modules/trust/trust.cron";
 import { runPaymentRecoveryJob } from "./paymentRecovery";
+import { runChatCleanupJob } from "./chatCleanup";
 import { runSettlementJob } from "../modules/marketPlace/settlement/settlement.service";
 
 export const startJobs = () => {
@@ -43,5 +44,12 @@ export const startJobs = () => {
   // Payment table exists.
   cron.schedule("*/5 * * * *", async () => {
     await runPaymentRecoveryJob();
+  });
+
+  // Chat cost control (hourly, off the :00 mark): delete Firestore messages
+  // whose `expireAt` has passed. Clients keep history in their local Hive
+  // cache, so this only trims the transport copy. Runs in batches of 400.
+  cron.schedule("17 * * * *", async () => {
+    await runChatCleanupJob();
   });
 };

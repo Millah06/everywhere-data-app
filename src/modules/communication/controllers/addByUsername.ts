@@ -38,7 +38,9 @@ export const findByUsername = async (req: any, res: any) => {
 
         return res.json({
             user: {
-                id: user.id,
+                // IMPORTANT: id must be the User.id (chat identity), not the
+                // UserProfile.id. user.userId is the FK to User.
+                id: user.userId,
                 name: user.user.name,
                 phone: user.user.phone,
                 userName: user.userName,

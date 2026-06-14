@@ -278,4 +278,99 @@ const getTopEarners = async (_req: any, res: any) => {
   }
 };
 
-export default { sendGift, convertCoinsToNaira, getUserCoinBalance, getCreatorStats, getTopEarners };
+// ─────────────────────────────────────────────────────────────────────────────
+// Direct user gift — gift a PERSON, not a post. Same ledger rules as sendGift:
+// spend purchased-first-then-earned, recipient gets EARNED coins, no wallet
+// fallback. GiftTransaction.postId is null here (needs the nullable migration —
+// see the Part 3 doc). No post counters are touched.
+const sendUserGift = async (req: any, res: any) => {
+  const senderId = req.user?.id;
+  const { receiverId, giftType } = req.body;
+  try {
+    if (!senderId || !receiverId || !giftType) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+    if (!GIFT_TYPES[giftType as GiftType]) {
+      return res.status(400).json({ error: "Invalid gift type" });
+    }
+    if (senderId === receiverId) {
+      return res.status(400).json({ error: "You can't gift yourself" });
+    }
+    const receiver = await prisma.user.findUnique({
+      where: { id: receiverId },
+      select: { id: true },
+    });
+    if (!receiver) return res.status(404).json({ error: "Recipient not found" });
+
+    const gift = GIFT_TYPES[giftType as GiftType];
+    const coinAmount = gift.coins;
+    const { purchaseRateNgn } = await getCoinRates();
+    const nairaEquivalent = coinsToNaira(coinAmount, purchaseRateNgn);
+    const platformFee = nairaEquivalent * PLATFORM_FEE_PERCENT;
+    const coinsAwarded = Math.floor(coinAmount * (1 - PLATFORM_FEE_PERCENT));
+
+    const today = new Date().toISOString().slice(0, 10);
+    const todayLimit = await prisma.userDailyLimit.findUnique({
+      where: { userId_date: { userId: senderId, date: today } },
+    });
+    if ((todayLimit?.totalSpent ?? 0) + nairaEquivalent > DAILY_GIFT_LIMIT_NAIRA) {
+      return res.status(400).json({ error: "Daily gifting limit reached" });
+    }
+
+    let split: { fromPurchased: number; fromEarned: number } | undefined;
+    try {
+      await prisma.$transaction(async (tx) => {
+        split = await spendCoins(tx, senderId, coinAmount);
+        await creditEarnedCoins(tx, receiverId, coinsAwarded);
+        await tx.creatorStats.upsert({
+          where: { userId: receiverId },
+          create: {
+            userId: receiverId,
+            totalCoinsEarned: coinsAwarded,
+            totalGiftsReceived: 1,
+            weeklyCoins: coinsAwarded,
+            weeklyResetAt: new Date(Date.now() + 7 * 86400000),
+          },
+          update: {
+            totalCoinsEarned: { increment: coinsAwarded },
+            totalGiftsReceived: { increment: 1 },
+            weeklyCoins: { increment: coinsAwarded },
+            lastUpdated: new Date(),
+          },
+        });
+        await tx.giftTransaction.create({
+          data: {
+            senderId, receiverId, postId: null, giftType,
+            coinAmount, nairaEquivalent, platformFee, coinsAwarded,
+          },
+        });
+        await tx.userDailyLimit.upsert({
+          where: { userId_date: { userId: senderId, date: today } },
+          create: { userId: senderId, date: today, totalSpent: nairaEquivalent, giftCount: 1, lastGiftAt: new Date() },
+          update: { totalSpent: { increment: nairaEquivalent }, giftCount: { increment: 1 }, lastGiftAt: new Date() },
+        });
+      });
+    } catch (e: any) {
+      if (e?.code === "INSUFFICIENT_COINS") {
+        return res.status(400).json({ error: "Not enough coins", code: "INSUFFICIENT_COINS", available: e.available });
+      }
+      throw e;
+    }
+
+    return res.json({
+      success: true,
+      giftType: gift.name,
+      giftEmoji: gift.emoji,
+      coinsSent: coinAmount,
+      coinsAwarded,
+      platformFee,
+      spentFromPurchased: split?.fromPurchased ?? 0,
+      spentFromEarned: split?.fromEarned ?? 0,
+    });
+  } catch (error: any) {
+    console.error("=== SEND USER GIFT ERROR ===", error);
+    res.status(500).json({ error: "Failed to send gift", message: error.message });
+  }
+};
+
+export default { sendGift, sendUserGift, convertCoinsToNaira, getUserCoinBalance, getCreatorStats, getTopEarners };

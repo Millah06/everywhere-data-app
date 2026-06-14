@@ -6,7 +6,7 @@ import { prisma } from "../../../prisma";
 export const createOrGetChatRoom = async (req: any, res: any) => {
   try {
     const myId = req.user.id;
-    const { otherUserId } = req.body;
+    const { otherUserId, initiatedVia } = req.body;
 
     const db = admin.firestore();
 
@@ -21,6 +21,14 @@ export const createOrGetChatRoom = async (req: any, res: any) => {
         error: "Cannot create chat with yourself",
       });
     }
+
+    // Message-requests policy: a chat started from a phone contact or a known
+    // number lands directly in the recipient's inbox; one started from a
+    // username / profile / QR goes to their "Requests" until accepted.
+    const directVias = new Set(["contact", "phone"]);
+    const requestState = directVias.has(String(initiatedVia))
+      ? "accepted"
+      : "pending";
 
     // Check existing room
     const existingRooms = await db
@@ -97,6 +105,14 @@ export const createOrGetChatRoom = async (req: any, res: any) => {
         lastMessage: "",
         lastMessageType: "text",
         lastMessageTime: null,
+
+        // Message-requests metadata.
+        //  requestState: 'accepted' | 'pending' | 'blocked'
+        //  requestedBy:  who initiated (so the recipient, not the sender, sees
+        //                the request and can accept/decline).
+        requestState,
+        requestedBy: myId,
+        initiatedVia: initiatedVia ?? "username",
 
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       },

@@ -93,7 +93,7 @@ router.post('/coins/convert', authMiddleware, giftController.convertCoinsToNaira
 router.get('/coins/balance', authMiddleware, giftController.getUserCoinBalance);
 router.get('/creator/stats', authMiddleware, giftController.getCreatorStats);
 router.get('/social/leaderboard', giftController.getTopEarners);
-// router.post('/gifts/send-user', authMiddleware, giftController.sendUserGift);
+router.post('/gifts/send-user', authMiddleware, giftController.sendUserGift);
 
 // Coin catalog + non-NG IAP + boost (Phase 10)
 router.get('/coins/catalog',        authMiddleware, coinController.getCoinCatalog);
