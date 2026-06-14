@@ -22,6 +22,7 @@ import {
   debitEarnedForConversion,
   getOrCreateLedger,
 } from "../../../shared/helpers/coin.helpers";
+import { recordRevenue } from "../../../shared/services/revenue.service";
 
 const DAILY_GIFT_LIMIT_NAIRA = 50000; // ₦50,000/day anti-abuse cap
 const PLATFORM_FEE_PERCENT = 0.05; // 5% breakage = platform revenue
@@ -106,11 +107,22 @@ const sendGift = async (req: any, res: any) => {
           data: { giftCount: { increment: 1 }, coinTotal: { increment: coinsAwarded } },
         });
 
-        await tx.giftTransaction.create({
+        const giftRow = await tx.giftTransaction.create({
           data: {
             senderId, receiverId, postId, giftType,
             coinAmount, nairaEquivalent, platformFee, coinsAwarded,
           },
+        });
+        // Reconciliation: the 5% gift fee is coin-economy breakage = platform
+        // revenue on the COIN rail (kept out of the NGN float surplus).
+        await recordRevenue(tx, {
+          source: "gift_breakage",
+          track: "coin",
+          amount: platformFee,
+          refType: "gift",
+          refId: giftRow.id,
+          idempotencyKey: `gift_breakage:${giftRow.id}`,
+          note: "Gift platform fee (coin breakage)",
         });
 
         await tx.userDailyLimit.upsert({
@@ -186,7 +198,23 @@ const convertCoinsToNaira = async (req: any, res: any) => {
         where: { userId },
         data: { totalNairaEarned: { increment: nairaAmount }, lastUpdated: new Date() },
       });
+      
       await tx.coinConversion.create({ data: { userId, coinAmount, nairaAmount } });
+
+      // Reconciliation: conversion spread (purchaseRate − conversionRate) on the
+      // converted coins is coin-rail revenue. Often 0 today (rates equal) →
+      // recordRevenue skips non-positive amounts.
+      const { purchaseRateNgn } = await getCoinRates();
+      const spread = coinAmount * purchaseRateNgn - nairaAmount;
+      await recordRevenue(tx, {
+        source: "conversion_spread",
+        track: "coin",
+        amount: spread,
+        refType: "conversion",
+        refId: userId,
+        idempotencyKey: `conversion_spread:${userId}:${Date.now()}`,
+        note: "Earned-coin cash-out spread",
+      });
     });
 
     return res.json({
@@ -338,12 +366,25 @@ const sendUserGift = async (req: any, res: any) => {
             lastUpdated: new Date(),
           },
         });
-        await tx.giftTransaction.create({
+        
+        const giftRow = await tx.giftTransaction.create({
           data: {
             senderId, receiverId, postId: null, giftType,
             coinAmount, nairaEquivalent, platformFee, coinsAwarded,
           },
         });
+        // Reconciliation: the 5% gift fee is coin-economy breakage = platform
+        // revenue on the COIN rail (kept out of the NGN float surplus).
+        await recordRevenue(tx, {
+          source: "gift_breakage",
+          track: "coin",
+          amount: platformFee,
+          refType: "gift",
+          refId: giftRow.id,
+          idempotencyKey: `gift_breakage:${giftRow.id}`,
+          note: "Gift platform fee (coin breakage)",
+        });
+
         await tx.userDailyLimit.upsert({
           where: { userId_date: { userId: senderId, date: today } },
           create: { userId: senderId, date: today, totalSpent: nairaEquivalent, giftCount: 1, lastGiftAt: new Date() },

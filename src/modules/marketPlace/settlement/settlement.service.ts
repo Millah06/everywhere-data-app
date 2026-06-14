@@ -3,6 +3,7 @@ import { TransactionStatus } from "@prisma/client";
 import { WalletService, PrismaTx } from "../../../shared/services/wallet.service";
 import { TX_TYPE } from "../../../shared/utils/transactionType";
 import { getVendorSettlementDelayHours } from "./settlement.rules";
+import { recordRevenue } from "../../../shared/services/revenue.service";
 
 /**
  * Phase 6 — Merchant Balance & Settlement (replaces per-order escrow).
@@ -231,6 +232,31 @@ export async function releaseHold(orderId: string) {
       ...(hold.net > payout ? { podCommissionOffset: round2(hold.net - payout) } : {}),
       net: payout,
     });
+
+    // ── Reconciliation: book platform revenue at SETTLEMENT (not at hold
+    // creation), so a pre-settlement refund never books phantom revenue.
+    // Same tx → commits atomically; idempotent by orderId; fail-open.
+    await recordRevenue(tx, {
+      source: "order_commission",
+      track: "ngn_float",
+      amount: hold.commission,
+      refType: "settlement_hold",
+      refId: hold.id,
+      idempotencyKey: `order_commission:${orderId}`,
+      note: "Marketplace commission realized on settlement",
+    });
+    const podRecovered = round2(hold.net - payout);
+    if (podRecovered > 0) {
+      await recordRevenue(tx, {
+        source: "pod_commission",
+        track: "ngn_float",
+        amount: podRecovered,
+        refType: "settlement_hold",
+        refId: hold.id,
+        idempotencyKey: `pod_commission:${orderId}`,
+        note: "POD commission recovered via settlement offset",
+      });
+    }
 
     return { released: true as const, hold, ownerId: vendor.ownerId };
   });

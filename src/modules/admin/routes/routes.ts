@@ -7,6 +7,7 @@ import transactionsController from "../controllers/transactions.controller";
 import marketPlaceController from "../controllers/marketPlace.controller";
 import supportChatController from "../controllers/supportChat.controller";
 import trustController from "../../trust/trust.controller";
+import reconciliationController from "../controllers/reconciliation.controller";
 
 
 const router = Router();
@@ -171,6 +172,38 @@ router.post("/admin/support/chats/:chatId/messages",
   authMiddleware, requireAdmin, supportChatController.adminSendMessage);
 router.get("/admin/support/chats",
   authMiddleware, requireAdmin, supportChatController.getAllChats);
+
+  // ── RECONCILIATION / TREASURY ───────────────────────────────────────────────
+router.get(
+  "/admin/reconciliation/summary",
+  authMiddleware,
+  requireAdmin,
+  reconciliationController.getSummary,
+);
+router.post(
+  "/admin/reconciliation/snapshot",
+  authMiddleware,
+  requireAdmin,
+  reconciliationController.takeSnapshot,
+);
+router.get(
+  "/admin/reconciliation/history",
+  authMiddleware,
+  requireAdmin,
+  reconciliationController.getHistory,
+);
+router.get(
+  "/admin/revenue/summary",
+  authMiddleware,
+  requireAdmin,
+  reconciliationController.getRevenueSummary,
+);
+router.get(
+  "/admin/revenue/ledger",
+  authMiddleware,
+  requireAdmin,
+  reconciliationController.getRevenueLedger,
+);
 
 
 export default router;

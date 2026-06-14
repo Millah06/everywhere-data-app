@@ -1,11 +1,19 @@
 import { Router } from "express";
-import { authMiddleware, optionalAuthMiddleware } from "../../../middleware/auth";
+import { authMiddleware, optionalAuthMiddleware, requireAdmin } from "../../../middleware/auth";
 import { findByUsername } from "../controllers/addByUsername";
 import { findByPhone } from "../controllers/addByPhone";
 import { syncContacts } from "../controllers/syncContacts";
 import { createOrGetChatRoom } from "../controllers/getChatRoom.controller";
 import { getChatUser } from "../controllers/getChatUser";
 import { respondToRequest } from "../controllers/respondRequest.controller";
+import { postBroadcast } from "../controllers/officialBroadcast.controller";
+import {
+  createGroup,
+  addGroupMembers,
+  removeGroupMember,
+  leaveGroup,
+  updateGroup,
+} from "../controllers/groups.controller";
 
 
 
@@ -24,5 +32,14 @@ router.post('/chat/sync-contacts', optionalAuthMiddleware, syncContacts);
 router.post('/chat/create-or-get-room', authMiddleware, createOrGetChatRoom);
 
 router.post('/chat/room/:roomId/respond', authMiddleware, respondToRequest);
+
+router.post('/chat/official/broadcast', authMiddleware, requireAdmin, postBroadcast);
+
+// ── Groups ──────────────────────────────────────────────────────────────────
+router.post('/chat/group', authMiddleware, createGroup);
+router.post('/chat/group/:roomId/members', authMiddleware, addGroupMembers);
+router.delete('/chat/group/:roomId/members/:userId', authMiddleware, removeGroupMember);
+router.post('/chat/group/:roomId/leave', authMiddleware, leaveGroup);
+router.patch('/chat/group/:roomId', authMiddleware, updateGroup);
 
 export default router;

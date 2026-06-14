@@ -8,6 +8,7 @@ import { runTrustUpgradeJob } from "../modules/trust/trust.cron";
 import { runPaymentRecoveryJob } from "./paymentRecovery";
 import { runChatCleanupJob } from "./chatCleanup";
 import { runSettlementJob } from "../modules/marketPlace/settlement/settlement.service";
+import { runReconciliationJob } from "./reconciliation";
 
 export const startJobs = () => {
   
@@ -51,5 +52,12 @@ export const startJobs = () => {
   // cache, so this only trims the transport copy. Runs in batches of 400.
   cron.schedule("17 * * * *", async () => {
     await runChatCleanupJob();
+  });
+
+  // Nightly (~03:00) — treasury reconciliation snapshot (float + coin solvency).
+  // Carries forward last manual OPay/Apple/Google balances; fail-closed no-op
+  // until the reconciliation tables exist.
+  cron.schedule("0 3 * * *", async () => {
+    await runReconciliationJob();
   });
 };

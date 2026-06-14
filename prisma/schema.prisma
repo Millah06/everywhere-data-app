@@ -993,3 +993,80 @@ model UserDailyLimit {
   @@unique([userId, date])
   @@index([userId, date])
 }
+
+// ── RECONCILIATION (mini-phase) ──────────────────────────────────────────────
+// Append-only revenue ledger + daily float/coin solvency snapshots. All additive
+// (new models + enums). Nothing references these from existing models, so the
+// migration is safe to apply alongside the others.
+
+enum RevenueSource {
+  order_commission   // marketplace commission, realized at settlement
+  pod_commission     // POD cash commission recovered via settlement offset
+  transaction_fee    // AppConfig.transactionFeePercent (0 today)
+  funding_fee        // AppConfig.fundingFees (0 today)
+  utility_markup     // VTPass spread (0 today)
+  gift_breakage      // 5% gift platform fee (coin rail)
+  conversion_spread  // purchaseRate − conversionRate spread on cash-out (coin rail)
+  coin_breakage      // unspent purchased coins recognized as revenue (future)
+  manual_adjustment  // admin correction (may be negative)
+}
+
+enum RevenueTrack {
+  ngn_float // realized as Naira inside the Paystack/OPay float
+  coin      // realized inside the coin economy / IAP funding rail
+}
+
+enum ReconStatus {
+  ok
+  warn
+  breach
+}
+
+model PlatformRevenue {
+  id             String        @id @default(uuid())
+  source         RevenueSource
+  track          RevenueTrack  @default(ngn_float)
+  amount         Float         // NGN value of the revenue event
+  currency       String        @default("NGN")
+  refType        String?       // "settlement_hold" | "gift" | "conversion" | ...
+  refId          String?
+  idempotencyKey String        @unique // e.g. "order_commission:<orderId>" — never double-books
+  note           String?
+  meta           Json?
+  createdAt      DateTime      @default(now())
+
+  @@index([source, createdAt])
+  @@index([track, createdAt])
+  @@index([createdAt])
+}
+
+model ReconciliationSnapshot {
+  id        String   @id @default(uuid())
+  takenAt   DateTime @default(now())
+  takenBy   String?  // admin userId (manual) | null (nightly cron)
+
+  // Track A — NGN wallet float (headline figures; full breakdown in `figures`)
+  ngnLiabilities  Float       @default(0)
+  ngnFloat        Float       @default(0)
+  ngnSurplus      Float       @default(0)
+  ngnStatus       ReconStatus @default(ok)
+
+  // Track B — coin treasury
+  coinLiability   Float       @default(0) // NG earned-coin cash-out obligation (₦)
+  coinFunding     Float       @default(0)
+  coinSurplus     Float       @default(0)
+  coinStatus      ReconStatus @default(ok)
+
+  // Float inputs (so a snapshot is reproducible / auditable)
+  paystackBalance Float       @default(0)
+  opayBalance     Float       @default(0)
+  appleBalance    Float       @default(0)
+  googleBalance   Float       @default(0)
+  paystackFetchOk Boolean     @default(false)
+
+  figures Json?   // itemized breakdown of every line (see reconciliation.service)
+  note    String?
+  createdAt DateTime @default(now())
+
+  @@index([takenAt])
+}
