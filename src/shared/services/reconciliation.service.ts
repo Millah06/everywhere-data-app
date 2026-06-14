@@ -50,9 +50,11 @@ export async function fetchPaystackBalanceNgn(): Promise<{
 }
 
 export interface ReconInputs {
-  opayBalance?: number;   // admin-entered (OPay merchant balance)
-  appleBalance?: number;  // admin-entered (App Store Connect pending payout, ₦)
-  googleBalance?: number; // admin-entered (Play Console pending payout, ₦)
+  opayBalance?: number;    // admin-entered (OPay merchant balance)
+  bankBalance?: number;    // admin-entered (operating/settlement bank — where PSPs settle)
+  vtpassBalance?: number;  // admin-entered (VTPass prepaid wallet — backs utility delivery)
+  appleBalance?: number;   // admin-entered (App Store Connect pending payout, ₦)
+  googleBalance?: number;  // admin-entered (Play Console pending payout, ₦)
   paystackOverride?: number; // skip the live fetch and use this instead
 }
 
@@ -95,7 +97,13 @@ export async function computeReconciliation(inputs: ReconInputs = {}) {
     paystackReason = pf.reason;
   }
   const opayBalance = round2(inputs.opayBalance ?? 0);
-  const ngnFloat = round2(paystackBalance + opayBalance);
+  const bankBalance = round2(inputs.bankBalance ?? 0);
+  const vtpassBalance = round2(inputs.vtpassBalance ?? 0);
+  // Float = EVERY pot where money you control sits: the PSPs + the operating
+  // bank PSPs settle into + the VTPass prepaid wallet (your cash, held to deliver
+  // utilities users already paid for). Counting only Paystack+OPay would
+  // under-state the float the moment money settles out to your bank.
+  const ngnFloat = round2(paystackBalance + opayBalance + bankBalance + vtpassBalance);
   const ngnSurplus = round2(ngnFloat - ngnLiabilities);
   const ngnRevenueTotal = round2(await sumRevenue({ track: "ngn_float" }));
   const ngnStatus = statusFor(ngnSurplus, ngnLiabilities);
@@ -166,6 +174,8 @@ export async function computeReconciliation(inputs: ReconInputs = {}) {
       paystackFetchOk,
       paystackReason,
       opayBalance,
+      bankBalance,
+      vtpassBalance,
       float: ngnFloat,
       surplus: ngnSurplus,
       revenueTotal: ngnRevenueTotal,

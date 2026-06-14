@@ -25,6 +25,8 @@ const getSummary = async (req: any, res: any) => {
   try {
     const result = await computeReconciliation({
       opayBalance: num(req.query.opay),
+      bankBalance: num(req.query.bank),
+      vtpassBalance: num(req.query.vtpass),
       appleBalance: num(req.query.apple),
       googleBalance: num(req.query.google),
       paystackOverride: num(req.query.paystack),
@@ -43,9 +45,12 @@ const getSummary = async (req: any, res: any) => {
  */
 const takeSnapshot = async (req: any, res: any) => {
   try {
-    const { opayBalance, appleBalance, googleBalance, paystackOverride, note } = req.body ?? {};
+    const { opayBalance, bankBalance, vtpassBalance, appleBalance, googleBalance, paystackOverride, note } =
+      req.body ?? {};
     const r = await computeReconciliation({
       opayBalance: num(opayBalance),
+      bankBalance: num(bankBalance),
+      vtpassBalance: num(vtpassBalance),
       appleBalance: num(appleBalance),
       googleBalance: num(googleBalance),
       paystackOverride: num(paystackOverride),
@@ -64,6 +69,8 @@ const takeSnapshot = async (req: any, res: any) => {
         coinStatus: r.coin.status,
         paystackBalance: r.ngn.paystackBalance,
         opayBalance: r.ngn.opayBalance,
+        bankBalance: r.ngn.bankBalance,
+        vtpassBalance: r.ngn.vtpassBalance,
         appleBalance: r.coin.appleBalance,
         googleBalance: r.coin.googleBalance,
         paystackFetchOk: r.ngn.paystackFetchOk,

@@ -24,6 +24,8 @@ export async function runReconciliationJob() {
 
     const r = await computeReconciliation({
       opayBalance: last?.opayBalance ?? 0,
+      bankBalance: last?.bankBalance ?? 0,
+      vtpassBalance: last?.vtpassBalance ?? 0,
       appleBalance: last?.appleBalance ?? 0,
       googleBalance: last?.googleBalance ?? 0,
     });
@@ -41,6 +43,8 @@ export async function runReconciliationJob() {
         coinStatus: r.coin.status,
         paystackBalance: r.ngn.paystackBalance,
         opayBalance: r.ngn.opayBalance,
+        bankBalance: r.ngn.bankBalance,
+        vtpassBalance: r.ngn.vtpassBalance,
         appleBalance: r.coin.appleBalance,
         googleBalance: r.coin.googleBalance,
         paystackFetchOk: r.ngn.paystackFetchOk,

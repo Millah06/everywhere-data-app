@@ -1060,6 +1060,8 @@ model ReconciliationSnapshot {
   // Float inputs (so a snapshot is reproducible / auditable)
   paystackBalance Float       @default(0)
   opayBalance     Float       @default(0)
+  bankBalance     Float       @default(0) // operating/settlement bank (PSPs settle here)
+  vtpassBalance   Float       @default(0) // VTPass prepaid wallet (backs utility delivery)
   appleBalance    Float       @default(0)
   googleBalance   Float       @default(0)
   paystackFetchOk Boolean     @default(false)

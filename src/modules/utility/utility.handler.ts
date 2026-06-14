@@ -24,6 +24,7 @@ import { WalletService } from "../../shared/services/wallet.service";
 import { TX_TYPE } from "../../shared/utils/transactionType";
 import { generateUUID } from "../../shared/utils/uuid";
 import { deliverUtility, type UtilityRequest } from "./utility.deliver";
+import { recordRevenue } from "../../shared/services/revenue.service";
 
 async function bonusPercentFor(service: string): Promise<number> {
   const cfg = await WalletService.getBonusConfig();
@@ -141,9 +142,34 @@ registerPaymentHandler("utility", async (payment) => {
     return;
   }
 
+   
   await finaliseUtilityDelivery(payment, result.status === "delivered", result.vendorResponse, {
     token: result.token,
     tokens: result.tokens,
     productName: result.productName,
   });
+
+  // ── Reconciliation: book the VTPass reseller margin as utility revenue.
+  //   markup = what the user paid − what VTPass actually charged our prepaid
+  //          = payment.amount − (faceAmount − commission)
+  // `commission` is VTPass's reseller commission on content.transactions.
+  // Recorded only on successful delivery (a refund returns the money, no
+  // revenue). Idempotent by payment.id; fail-open (never blocks the money path).
+  if (result.status === "delivered") {
+    const txn = (result.vendorResponse as any)?.content?.transactions ?? {};
+    const faceAmount = Number(txn.amount ?? payment.amount) || 0;
+    const commission = Number(txn.commission ?? 0) || 0;
+    const vtpassCost = faceAmount - commission; // what VTPass debited our wallet
+    const markup = Number(payment.amount) - vtpassCost;
+    await recordRevenue(prisma, {
+      source: "utility_markup",
+      track: "ngn_float",
+      amount: markup, // recordRevenue skips it if ≤ 0
+      refType: "payment",
+      refId: payment.id,
+      idempotencyKey: `utility_markup:${payment.id}`,
+      note: `VTPass margin (${req.service})`,
+    });  
+  }
+
 });
