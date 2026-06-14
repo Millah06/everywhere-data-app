@@ -20,7 +20,7 @@ const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const getTopCreators = async (_req: any, res: any) => {
   try {
     const top = await prisma.creatorStats.findMany({
-      where: { user: { hideFromLeaderboard: false } }, // respect opt-out
+      where: { user: { hideFromLeaderboardCreators: false } }, // respect opt-out
       orderBy: { weeklyCoins: "desc" },
       take: 10,
       include: {
@@ -66,7 +66,7 @@ const getTopSupporters = async (_req: any, res: any) => {
     if (senderIds.length === 0) return res.json({ success: true, supporters: [] });
 
     const users = await prisma.user.findMany({
-      where: { id: { in: senderIds }, hideFromLeaderboard: false },
+      where: { id: { in: senderIds }, hideFromLeaderboardSupporters: false },
       select: { id: true, name: true, userProfile: { select: { avatarUrl: true } } },
     });
     const byId = new Map(users.map((u) => [u.id, u]));

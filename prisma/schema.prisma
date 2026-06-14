@@ -144,7 +144,10 @@ model User {
   badges         Badges?
   coins            UserCoins?
   creatorStats     CreatorStats?
-  hideFromLeaderboard Boolean @default(false) // opt out of public Spotlight boards
+
+  hideFromLeaderboardCreators Boolean @default(false) // opt out of public Spotlight boards
+  hideFromLeaderboardSupporters Boolean @default(false)
+
   virtualAccount VirtualAccount[]
   wallet         Wallet?
   orders         Order[]
