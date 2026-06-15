@@ -9,6 +9,7 @@ import { runPaymentRecoveryJob } from "./paymentRecovery";
 import { runChatCleanupJob } from "./chatCleanup";
 import { runSettlementJob } from "../modules/marketPlace/settlement/settlement.service";
 import { runReconciliationJob } from "./reconciliation";
+import { runFeedMaintenanceJob } from "./feedMaintenance";
 
 export const startJobs = () => {
   
@@ -59,5 +60,12 @@ export const startJobs = () => {
   // until the reconciliation tables exist.
   cron.schedule("0 3 * * *", async () => {
     await runReconciliationJob();
+  });
+
+  // PHASE 11 — Nightly (~03:30) feed maintenance: prune FeedSeen + the
+  // (previously unbounded) PostViewTracker, and decay UserTopicAffinity weights.
+  // Fail-closed; no-op until the Phase-11 tables exist.
+  cron.schedule("30 3 * * *", async () => {
+    await runFeedMaintenanceJob();
   });
 };

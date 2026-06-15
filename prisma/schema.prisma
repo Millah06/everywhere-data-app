@@ -161,6 +161,14 @@ model User {
   sentTransfers     Transfer[] @relation("TransferSender")
   receivedTransfers Transfer[] @relation("TransferReceiver")
   posts             Post[]
+  // ── PHASE 11 — feed ranking ──────────────────────────────────────────────
+  feedSeen         FeedSeen[]            // posts we've served this user (dedup)
+  topicAffinities  UserTopicAffinity[]   // this user's taste profile
+
+  // ── PHASE 11 — surveys ───────────────────────────────────────────────────
+  surveysAuthored  Survey[]              // surveys this user created
+  surveyResponses  SurveyResponse[]      // surveys this user answered
+
   postLikes         PostLike[]
   postComments      PostComment[]
   savedPosts        SavedPost[]
@@ -455,11 +463,209 @@ model Post {
   viewTrackers  PostViewTracker[]
   reposts        Repost[] @relation("OriginalPost")
 
+  // ── PHASE 11 ────────────────────────────────────────────────────────────
+  // Distinguishes a normal post from a survey post. The feed + PostCard branch
+  // on this. NON-NULLABLE with a default, so every existing/new post is valid.
+  postType   String   @default("standard")   // "standard" | "survey"
+
+  // A survey post owns exactly one Survey (the questions/options live there).
+  survey     Survey?
+
+  // Back-relation for the dedup table (lets Prisma cascade-delete seen rows
+  // when a post is deleted).
+  feedSeenBy FeedSeen[]
+
   @@index([userId, createdAt])
   @@index([text])                             // Full-text search index (PostgreSQL)
   @@index([algorithmScore, createdAt])
   @@index([isBoosted, createdAt])
   @@index([createdAt])              
+}
+
+// =============================================================================
+// PHASE 11 — FEED RANKING TABLES
+// =============================================================================
+
+// ── DEDUP MEMORY ─────────────────────────────────────────────────────────────
+// One row per (user, post) the feed has SERVED. Used ONLY to avoid re-showing
+// content. Composite PK guarantees no duplicate rows. Pruned nightly to
+// FEED_SEEN_RETENTION_DAYS (see feedSeen.service.ts) so it stays cheap.
+model FeedSeen {
+  userId String
+  postId String
+  seenAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@id([userId, postId])        // NON-NULLABLE composite key — dedup guarantee
+  @@index([userId, seenAt])     // powers the "exclude seen" + nightly prune
+}
+
+// ── INTEREST MODEL (taste profile) ───────────────────────────────────────────
+// One row per (user, kind, topic). `kind` says whether `topic` is a hashtag or
+// an author id. `weight` grows on engagement and decays nightly. This IS the
+// personalization signal. Composite PK → upsert, never duplicates.
+enum AffinityKind {
+  hashtag
+  author
+}
+
+model UserTopicAffinity {
+  userId    String
+  kind      AffinityKind
+  topic     String        // lower-cased hashtag, OR an author's User.id
+  weight    Float    @default(0)
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, kind, topic])   // NON-NULLABLE composite key
+  @@index([userId, weight])     // powers "top-N affinities" reads
+}
+
+// =============================================================================
+// PHASE 11 — SURVEY TABLES (a survey is a Post with postType = "survey")
+// =============================================================================
+//
+// SCHEMA NOW, LOGIC IN PASS 2. These tables ship in this one migration so you
+// only `db push` once. The survey create/respond/results endpoints come next.
+//
+// IMPORTANT ANONYMITY LESSON (read the SurveyResponse note): "anonymous" does
+// NOT mean we store no identity. We ALWAYS store who answered (for fraud,
+// dedup, and coin payout) — we just never DISCLOSE it to the survey author when
+// the survey is anonymous. Anonymity is a presentation rule, not a storage rule.
+
+enum SurveyAudience {
+  everyone
+  followers
+  ng_only        // diaspora gating reuse — NG-tied users only
+}
+
+enum SurveyResultVisibility {
+  after_vote     // respondent sees results once they answer
+  after_close    // results revealed only when the survey closes
+  author_only    // only the author ever sees results
+  always         // anyone can see live results
+}
+
+enum SurveyQuestionType {
+  single_choice  // pick one option
+  multi_choice   // pick several options
+  scale          // Likert 1..N
+  short_text     // free text answer
+  nps            // 0..10 "how likely to recommend" (special scale)
+}
+
+model Survey {
+  id               String   @id @default(uuid())
+  postId           String   @unique          // the host Post (postType="survey")
+  authorId         String
+  title            String                     // NON-NULLABLE — a survey needs a title
+  description      String   @default("")
+  anonymous        Boolean  @default(true)    // hide respondent identity from author
+  audience         SurveyAudience @default(everyone)
+  resultVisibility SurveyResultVisibility @default(after_vote)
+  closesAt         DateTime?                  // null = open until manually closed
+  isClosed         Boolean  @default(false)
+  responseCount    Int      @default(0)       // denormalized for fast display
+
+  // ── Coin incentive (Pass 2 wires the actual coin debit/credit) ────────────
+  rewardCoins      Int      @default(0)       // coins paid to each completer (0 = off)
+  rewardBudget     Int      @default(0)       // total coins the author escrowed
+  rewardSpent      Int      @default(0)       // coins already paid out
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  post      Post  @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author    User  @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  questions SurveyQuestion[]
+  responses SurveyResponse[]
+
+  @@index([authorId, createdAt])
+}
+
+model SurveyQuestion {
+  id            String   @id @default(uuid())
+  surveyId      String
+  type          SurveyQuestionType            // NON-NULLABLE — drives rendering
+  prompt        String                        // NON-NULLABLE — the question text
+  order         Int      @default(0)          // display order within the survey
+  required      Boolean  @default(true)
+
+  // scale / nps config (null for choice & text questions)
+  scaleMin      Int?
+  scaleMax      Int?
+  scaleMinLabel String?                       // e.g. "Strongly disagree"
+  scaleMaxLabel String?                       // e.g. "Strongly agree"
+
+  survey  Survey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  options SurveyOption[]
+  answers SurveyAnswer[]
+
+  @@index([surveyId, order])
+}
+
+model SurveyOption {
+  id         String @id @default(uuid())
+  questionId String
+  label      String                            // NON-NULLABLE — the option text
+  order      Int    @default(0)
+  voteCount  Int    @default(0)                // denormalized tally → instant charts
+
+  question SurveyQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  answers  SurveyAnswer[]
+
+  @@index([questionId, order])
+}
+
+model SurveyResponse {
+  id           String   @id @default(uuid())
+  surveyId     String
+
+  // ANONYMITY: we ALWAYS record who answered. The `?` exists ONLY so that if a
+  // user deletes their account we can SetNull and keep the aggregate counts
+  // intact (an orphaned anonymous response). At creation time this is NEVER
+  // null. The author only sees this id when survey.anonymous == false.
+  respondentId String?
+
+  // Demographic snapshot taken at response time, for insight breakdowns. We
+  // snapshot rather than join so historical results don't change if the user
+  // later edits their profile.
+  respondentCountry String?
+
+  rewardPaid   Boolean  @default(false)        // did we pay this completer coins?
+  createdAt    DateTime @default(now())
+
+  survey     Survey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  respondent User?  @relation(fields: [respondentId], references: [id], onDelete: SetNull)
+  answers    SurveyAnswer[]
+
+  // FRAUD GUARD: one response per user per survey, enforced by the DATABASE.
+  // (Postgres treats NULLs as distinct, so deleted-account orphans never
+  // collide — exactly what we want.)
+  @@unique([surveyId, respondentId])
+  @@index([surveyId, createdAt])
+}
+
+model SurveyAnswer {
+  id         String  @id @default(uuid())
+  responseId String
+  questionId String
+
+  // Exactly one of these is set, depending on the question type:
+  optionId   String?   // single_choice / multi_choice (one row per chosen option)
+  scaleValue Int?      // scale / nps
+  textValue  String?   // short_text
+
+  response SurveyResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  question SurveyQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  option   SurveyOption?  @relation(fields: [optionId], references: [id], onDelete: SetNull)
+
+  @@index([responseId])
+  @@index([questionId])
+  @@index([optionId])
 }
 
 model PostLike {

@@ -23,6 +23,7 @@ import {
   getOrCreateLedger,
 } from "../../../shared/helpers/coin.helpers";
 import { recordRevenue } from "../../../shared/services/revenue.service";
+import { bumpAffinityForEngagement } from "../services/affinity.service";
 
 const DAILY_GIFT_LIMIT_NAIRA = 50000; // ₦50,000/day anti-abuse cap
 const PLATFORM_FEE_PERCENT = 0.05; // 5% breakage = platform revenue
@@ -139,6 +140,9 @@ const sendGift = async (req: any, res: any) => {
       }
       throw e;
     }
+
+    // PHASE 11: gifting is the strongest taste signal we have (real coins spent).
+    void bumpAffinityForEngagement(senderId, postId, "gift");
 
     return res.json({
       success: true,

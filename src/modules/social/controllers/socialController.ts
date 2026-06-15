@@ -4,6 +4,8 @@ import admin from "firebase-admin";
 import { prisma } from "../../../prisma";
 import { resolveUserId } from "../utils/resolveUser";
 import { postToClientShape } from "../services/postPresentation";
+import { buildForYouFeed } from "../services/feedRanking.service";
+import { bumpAffinityForEngagement } from "../services/affinity.service";
 
 const db = admin.firestore();
 
@@ -38,6 +40,8 @@ const likePost = async (req: any, res: any) => {
           data: { likeCount: { increment: 1 } },
         }),
       ]);
+
+      void bumpAffinityForEngagement(userId, postId, "like");
     }
 
     res.json({ success: true });
@@ -81,6 +85,9 @@ const commentOnPost = async (req: any, res: any) => {
         where: { id: postId },
         data: { commentCount: { increment: 1 } },
       });
+
+      void bumpAffinityForEngagement(userId, postId, "comment");
+      
       return c;
     });
 
@@ -157,105 +164,185 @@ const getTopEarners = async (req: any, res: any) => {
 
 const getForYouFeed = async (req: any, res: any) => {
   try {
-    const userId = req.user?.id;
-    const { limit = 20, lastPostId } = req.query;
-    const limitNum = Math.min(parseInt(limit as string), 50);
+    const userId = req.user?.id ?? null;           // may be null (guest)
+    const { limit = 20 } = req.query;
+    const limitNum = Math.min(parseInt(limit as string) || 20, 50);
 
-    // const user = await prisma.user.findUnique({
-    //   where: { id: userId },
-    //   include: { following: true },
-    // });
+    // ── STAGES 1–5 (candidate gen → filter → rank → re-rank → mark seen) ──────
+    // All of it lives in the engine. We get back the final ordered posts.
+    const { posts: ranked, hasMore } = await buildForYouFeed({
+      userId,
+      limit: limitNum,
+    });
 
-    // if (!user) {
-    //   return res.status(404).json({ error: "User not found" });
-    // }
+    if (ranked.length === 0) {
+      return res.json({ success: true, posts: [], hasMore: false });
+    }
 
-    let user = null;
+    // ── Per-viewer enrichment (only meaningful when logged in) ───────────────
+    // Load the follow set once (not per post). Guests skip all of this.
+    let followingIds = new Set<string>();
     if (userId) {
-      user = await prisma.user.findUnique({
+      const u = await prisma.user.findUnique({
         where: { id: userId },
         include: { following: true },
       });
+      followingIds = new Set((u?.following ?? []).map((f) => f.followingId));
     }
 
-    // Build query with optional cursor
-    const queryOptions: any = {
-      take: limitNum,
-      orderBy: [{ algorithmScore: "desc" }, { createdAt: "desc" }],
-      include: {
-        _count: {
-          select: { reposts: true },
-        },
-      },
-    };
-
-    // Only add cursor if lastPostId is provided (handles initial load)
-    if (lastPostId) {
-      queryOptions.cursor = { id: lastPostId as string };
-      queryOptions.skip = 1;
-    }
-
-    const rows = await prisma.post.findMany(queryOptions);
-
-    console.log("✅ Found", rows.length, "posts");
+    // Batch the repost counts for the served posts in ONE query (keeps parity
+    // with the old `_count.reposts` without an N+1).
+    const ids = ranked.map((p) => p.id);
+    const repostGroups = await prisma.repost.groupBy({
+      by: ["originalPostId"],
+      where: { originalPostId: { in: ids } },
+      _count: { _all: true },
+    });
+    const repostMap = new Map(
+      repostGroups.map((g) => [g.originalPostId, g._count._all]),
+    );
 
     const posts = await Promise.all(
-      rows.map(async (doc: any) => {
+      ranked.map(async (doc: any) => {
         let isFollowing = false;
-        if (userId && doc.userId !== userId) {
-          isFollowing =
-            user?.following.some((f) => f.followingId === doc.userId) || false;
-        }
-
         let isSaved = false;
-        if (userId) {
-          const saved = await prisma.savedPost.findUnique({
-            where: { userId_postId: { userId, postId: doc.id } },
-          });
-          isSaved = !!saved;
-        }
-
         let isLiked = false;
 
-        // const like = await prisma.postLike.findUnique({
-        //   where: {
-        //     postId_userId: { postId: doc.id, userId: userId },
-        //   },
-        // });
-        // isLiked = !!like;
-
+        if (userId && doc.userId !== userId) {
+          isFollowing = followingIds.has(doc.userId);
+        }
         if (userId) {
-          const like = await prisma.postLike.findUnique({
-            where: {
-              postId_userId: { postId: doc.id, userId: userId },
-            },
-          });
-
+          const [saved, like] = await Promise.all([
+            prisma.savedPost.findUnique({
+              where: { userId_postId: { userId, postId: doc.id } },
+            }),
+            prisma.postLike.findUnique({
+              where: { postId_userId: { postId: doc.id, userId } },
+            }),
+          ]);
+          isSaved = !!saved;
           isLiked = !!like;
         }
 
         return postToClientShape({
           ...doc,
+          repostCount: repostMap.get(doc.id) ?? 0,
           isFollowing,
-          repostCount: doc._count.reposts || 0,
-          isLikedByCurrentUser: isLiked,
           isSaved,
+          isLikedByCurrentUser: isLiked,
         });
       }),
     );
 
-    res.json({
-      success: true,
-      posts,
-      hasMore: posts.length === limitNum,
-    });
+    return res.json({ success: true, posts, hasMore });
   } catch (error: any) {
     console.error("❌ Get For You feed error:", error);
-    res
+    return res
       .status(500)
       .json({ error: "Failed to fetch feed", message: error.message });
   }
 };
+// const getForYouFeed = async (req: any, res: any) => {
+//   try {
+//     const userId = req.user?.id;
+//     const { limit = 20, lastPostId } = req.query;
+//     const limitNum = Math.min(parseInt(limit as string), 50);
+
+//     // const user = await prisma.user.findUnique({
+//     //   where: { id: userId },
+//     //   include: { following: true },
+//     // });
+
+//     // if (!user) {
+//     //   return res.status(404).json({ error: "User not found" });
+//     // }
+
+//     let user = null;
+//     if (userId) {
+//       user = await prisma.user.findUnique({
+//         where: { id: userId },
+//         include: { following: true },
+//       });
+//     }
+
+//     // Build query with optional cursor
+//     const queryOptions: any = {
+//       take: limitNum,
+//       orderBy: [{ algorithmScore: "desc" }, { createdAt: "desc" }],
+//       include: {
+//         _count: {
+//           select: { reposts: true },
+//         },
+//       },
+//     };
+
+//     // Only add cursor if lastPostId is provided (handles initial load)
+//     if (lastPostId) {
+//       queryOptions.cursor = { id: lastPostId as string };
+//       queryOptions.skip = 1;
+//     }
+
+//     const rows = await prisma.post.findMany(queryOptions);
+
+//     console.log("✅ Found", rows.length, "posts");
+
+//     const posts = await Promise.all(
+//       rows.map(async (doc: any) => {
+//         let isFollowing = false;
+//         if (userId && doc.userId !== userId) {
+//           isFollowing =
+//             user?.following.some((f) => f.followingId === doc.userId) || false;
+//         }
+
+//         let isSaved = false;
+//         if (userId) {
+//           const saved = await prisma.savedPost.findUnique({
+//             where: { userId_postId: { userId, postId: doc.id } },
+//           });
+//           isSaved = !!saved;
+//         }
+
+//         let isLiked = false;
+
+//         // const like = await prisma.postLike.findUnique({
+//         //   where: {
+//         //     postId_userId: { postId: doc.id, userId: userId },
+//         //   },
+//         // });
+//         // isLiked = !!like;
+
+//         if (userId) {
+//           const like = await prisma.postLike.findUnique({
+//             where: {
+//               postId_userId: { postId: doc.id, userId: userId },
+//             },
+//           });
+
+//           isLiked = !!like;
+//         }
+
+//         return postToClientShape({
+//           ...doc,
+//           isFollowing,
+//           repostCount: doc._count.reposts || 0,
+//           isLikedByCurrentUser: isLiked,
+//           isSaved,
+//         });
+//       }),
+//     );
+
+//     res.json({
+//       success: true,
+//       posts,
+//       hasMore: posts.length === limitNum,
+//     });
+//   } catch (error: any) {
+//     console.error("❌ Get For You feed error:", error);
+//     res
+//       .status(500)
+//       .json({ error: "Failed to fetch feed", message: error.message });
+//   }
+// };
 
 const getFollowingFeed = async (req: any, res: any) => {
   try {

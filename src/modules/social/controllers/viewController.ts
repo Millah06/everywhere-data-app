@@ -2,6 +2,7 @@
 
 import { prisma } from "../../../prisma";
 import { updatePostScore } from "../services/algorithmService";
+import { bumpAffinityForEngagement } from "../services/affinity.service";
 
 const incrementView = async (req: any, res: any) => {
   try {
@@ -64,9 +65,14 @@ const incrementView = async (req: any, res: any) => {
 
       await updatePostScore(postId, prisma);
 
+      // PHASE 11: a genuine (24h-deduped) view nudges the viewer's taste profile
+      // toward this post's author + hashtags. Fire-and-forget so the view
+      // endpoint stays instant.
+      void bumpAffinityForEngagement(viewerPrismaId, postId, "view");
+
       return res.json({ success: true, counted: true });
     }
-
+    
     return res.json({
       success: true,
       counted: false,
