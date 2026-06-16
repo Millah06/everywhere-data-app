@@ -16,6 +16,7 @@ export function postToClientShape(
     text: p.text,
     images: p.images,
     hashtags: p.hashtags,
+    postType: p.postType,
     createdAt: p.createdAt.getTime(),
     likeCount: p.likeCount,
     commentCount: p.commentCount,
