@@ -635,6 +635,11 @@ model SurveyResponse {
   // later edits their profile.
   respondentCountry String?
 
+  // Snapshot: did this respondent follow the author at the moment they answered?
+  // Stored so the "followers vs non-followers" insight never changes if they
+  // later follow/unfollow. Nullable (legacy/edge rows tolerated).
+  respondentWasFollower Boolean?
+
   rewardPaid   Boolean  @default(false)        // did we pay this completer coins?
   createdAt    DateTime @default(now())
 

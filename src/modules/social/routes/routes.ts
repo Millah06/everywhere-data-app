@@ -15,6 +15,7 @@ import spotlightController from '../controllers/spotlightController';
 
 
 import multer from "multer";
+import surveyController from "../controllers/surveyController";
 
 
 const  upload = multer({ storage: multer.memoryStorage(), 
@@ -103,6 +104,13 @@ router.post('/social/boost',        authMiddleware, coinController.boostPost);
 
 router.get('/social/spotlight/creators',   optionalAuthMiddleware, spotlightController.getTopCreators);
 router.get('/social/spotlight/supporters', optionalAuthMiddleware, spotlightController.getTopSupporters);
+
+router.post('/social/surveys',                    authMiddleware,         surveyController.createSurvey);
+router.get('/social/surveys/by-post/:postId',     optionalAuthMiddleware, surveyController.getSurveyByPost); // ← new
+router.get('/social/surveys/:surveyId',           optionalAuthMiddleware, surveyController.getSurvey);
+router.post('/social/surveys/:surveyId/respond',  authMiddleware,         surveyController.submitResponse);
+router.get('/social/surveys/:surveyId/results',   optionalAuthMiddleware, surveyController.getResults);
+router.post('/social/surveys/:surveyId/close',    authMiddleware,         surveyController.closeSurvey);
 
 
 export default router;

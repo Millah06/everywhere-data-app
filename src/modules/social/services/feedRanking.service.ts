@@ -190,12 +190,45 @@ export async function buildForYouFeed(opts: {
 
   let candidates = Array.from(byId.values());
 
-  // --- STAGE 2b: EXHAUSTION FALLBACK -----------------------------------------
-  // If, after dedup, we don't even have a full page of UNSEEN posts, top up with
-  // the user's stalest-seen posts so the feed is never empty / never abruptly
-  // ends. These are tagged "exhaustion" and scored normally.
+  // --- STAGE 2b: BACKFILL when the pool is thin -------------------------------
+  // This is the answer to "what happens at the very start when there are only a
+  // handful of posts, or later when posting volume is low?". Two tiers:
+  //
+  //   (i) ALL-TIME UNSEEN: the main candidate pulls only look back FRESH_WINDOW_
+  //       DAYS, so a brand-new app (few posts) is fine, but a post OLDER than the
+  //       window that a user simply hasn't reached yet would be invisible. Here
+  //       we pull the newest posts IGNORING the window, and add any that are
+  //       unseen, not ours, and not already pooled. This guarantees a user can
+  //       see every post that exists before anything repeats.
+  //
+  //  (ii) STALEST-SEEN RE-SHOW: only if there is genuinely nothing unseen left
+  //       (a heavy user on a low-volume app), re-show what they saw longest ago
+  //       so the feed is never empty. With only 3–10 posts total this is normal
+  //       and expected — there simply isn't new content, so we cycle the oldest-
+  //       seen rather than show a blank feed.
+  if (candidates.length < limit) {
+    // (i) all-time unseen backfill — newest first, no fresh-window gate.
+    const backfill = await prisma.post.findMany({
+      where: userId ? { userId: { not: userId } } : {},
+      orderBy: { createdAt: "desc" },
+      take: limit * 3, // small over-fetch; we filter in memory below
+    });
+    for (const post of backfill) {
+      if (byId.has(post.id)) continue;
+      if (seen.has(post.id)) continue;
+      byId.set(post.id, {
+        post,
+        source: "explore",
+        score: 0,
+        isExplore: false, // backfill isn't "discovery", it's just availability
+      });
+    }
+    candidates = Array.from(byId.values());
+  }
+
+  // (ii) stalest-seen re-show — last resort so the feed never ends.
   if (candidates.length < limit && userId) {
-    const need = limit * 2 - candidates.length; // pull a little extra to rank
+    const need = limit * 2 - candidates.length;
     const staleIds = await getStalestSeenPostIds(userId, need);
     const fresh = staleIds.filter((id) => !byId.has(id));
     if (fresh.length > 0) {
@@ -234,10 +267,13 @@ export async function buildForYouFeed(opts: {
   const page = assemblePage(candidates, limit);
 
   // --- STAGE 5: remember what we served (dedup memory for next pull) ----------
-  // Fire-and-forget: do NOT block the response on this write. If it fails the
-  // worst case is a possible repeat next page — acceptable; speed wins.
+  // We AWAIT this (it's a single small batched write). Awaiting matters for
+  // pagination correctness: the client's "load more" calls again WITHOUT a
+  // cursor, relying on the server to exclude what it just served. If this write
+  // hadn't committed yet, page 2 could overlap page 1. The write is tiny (~20
+  // rows), so awaiting costs a few ms and removes the race.
   const servedIds = page.map((c) => c.post.id);
-  void recordSeen(userId, servedIds);
+  await recordSeen(userId, servedIds);
 
   // hasMore: were there candidates we didn't use this page? If yes, the next
   // pull (which will exclude everything we just marked seen) will have content.
