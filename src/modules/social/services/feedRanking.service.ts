@@ -138,6 +138,7 @@ interface Candidate {
 export async function buildForYouFeed(opts: {
   userId: string | null;
   limit: number;
+  excludeIds?: string[]; // postIds the client already has (deterministic paging)
 }): Promise<{ posts: Post[]; hasMore: boolean }> {
   const { userId } = opts;
   const limit = Math.min(Math.max(opts.limit, 1), 50);
@@ -149,6 +150,15 @@ export async function buildForYouFeed(opts: {
     getSeenPostIds(userId),
     getAffinityProfile(userId),
   ]);
+
+  // Merge the client-supplied exclude list (postIds already on screen) into the
+  // seen set. This makes "load more" DETERMINISTIC even if FeedSeen is empty
+  // (missing migration, guest, or a write that hasn't landed) — the next page
+  // can never repeat what the client already holds. FeedSeen still handles
+  // cross-session dedup; this just guarantees within-session correctness.
+  if (opts.excludeIds && opts.excludeIds.length > 0) {
+    for (const id of opts.excludeIds) seen.add(id);
+  }
 
   // Followed author ids (for the follow-graph candidate source + the FOLLOWING
   // score term). Guests follow nobody.

@@ -177,10 +177,18 @@ const getForYouFeed = async (req: any, res: any) => {
     const { limit = 20 } = req.query;
     const limitNum = Math.min(parseInt(limit as string) || 20, 50);
 
+    // Client sends the postIds it already has (comma-separated) so paging is
+    // deterministic regardless of FeedSeen state. Capped to keep the URL sane.
+    const excludeParam = (req.query.exclude as string) || "";
+    const excludeIds = excludeParam
+      ? excludeParam.split(",").map((s) => s.trim()).filter(Boolean).slice(0, 120)
+      : [];
+
     // STAGES 1-5 (candidate gen -> filter -> rank -> re-rank -> mark seen).
     const { posts: ranked, hasMore } = await buildForYouFeed({
       userId,
       limit: limitNum,
+      excludeIds,
     });
 
     if (ranked.length === 0) {
