@@ -275,9 +275,19 @@ export async function buildForYouFeed(opts: {
   const servedIds = page.map((c) => c.post.id);
   await recordSeen(userId, servedIds);
 
-  // hasMore: were there candidates we didn't use this page? If yes, the next
-  // pull (which will exclude everything we just marked seen) will have content.
-  const hasMore = candidates.length > page.length;
+  // hasMore: is there genuinely MORE *unseen* content to fetch next time?
+  //
+  // The fix for the "infinite spinner / never reaches the end" bug: we must NOT
+  // count the stalest-seen RE-SHOW pad as "more". If we did, hasMore would stay
+  // true forever (there's always something old to re-show) and the feed would
+  // spin endlessly and never print "You've reached the end".
+  //
+  // So we only count UNSEEN candidates (everything except the "exhaustion"
+  // re-show source). If, after serving this page, more unseen candidates remain
+  // in the pool, there's more to fetch → true. Once we've served all unseen and
+  // are only padding with re-shows, we're at the end → false.
+  const unseenCount = candidates.filter((c) => c.source !== "exhaustion").length;
+  const hasMore = unseenCount > page.length;
 
   return { posts: page.map((c) => c.post), hasMore };
 }

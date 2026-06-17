@@ -960,6 +960,124 @@ function computeNps(values: number[]): number {
   return Math.round(((promoters - detractors) / values.length) * 100);
 }
 
+// =============================================================================
+// FEED EMBEDDING — attach a fully-shaped survey to survey posts in a feed
+// =============================================================================
+//
+// WHY: a survey post in the feed should render its survey IMMEDIATELY, with the
+// post — not fetch it separately (which causes a visible second wait and a
+// refetch every time the list recycles the card on scroll). So any endpoint
+// that returns posts calls `attachSurveys(posts, viewerId)` once, and the survey
+// rides along inside each survey post's JSON. The client then renders from the
+// embedded data with zero extra requests.
+//
+// COST: this runs at most ~4 batched queries for the WHOLE page, regardless of
+// how many survey posts it contains (surveys, the viewer's responses to them,
+// the viewer's follow edges to their authors, and the viewer row). Standard
+// posts cost nothing here.
+// =============================================================================
+
+/**
+ * Build a Map<postId, shapedSurvey> for the given survey post ids, with full
+ * per-viewer state (isAuthor / hasResponded / canRespond / canSeeResults).
+ * Reuses the exact same shaping + gating helpers as the single-survey endpoints,
+ * so embedded surveys and directly-fetched surveys are byte-for-byte identical.
+ */
+export async function loadSurveysForPosts(
+  postIds: string[],
+  viewerId: string | null,
+): Promise<Map<string, any>> {
+  const out = new Map<string, any>();
+  if (postIds.length === 0) return out;
+
+  const surveys = await prisma.survey.findMany({
+    where: { postId: { in: postIds } },
+    include: {
+      questions: { include: { options: true }, orderBy: { order: "asc" } },
+    },
+  });
+  if (surveys.length === 0) return out;
+
+  // Per-viewer context, all batched (one query each), only when signed in.
+  let respondedSet = new Set<string>(); // surveyIds the viewer has answered
+  let followingSet = new Set<string>(); // authorIds the viewer follows
+  let viewer: { id: string; phone: string | null; country: string | null } | null =
+    null;
+
+  if (viewerId) {
+    const surveyIds = surveys.map((s) => s.id);
+    const authorIds = Array.from(new Set(surveys.map((s) => s.authorId)));
+    const [responses, follows, v] = await Promise.all([
+      prisma.surveyResponse.findMany({
+        where: { surveyId: { in: surveyIds }, respondentId: viewerId },
+        select: { surveyId: true },
+      }),
+      prisma.follow.findMany({
+        where: { followerId: viewerId, followingId: { in: authorIds } },
+        select: { followingId: true },
+      }),
+      prisma.user.findUnique({
+        where: { id: viewerId },
+        select: { id: true, phone: true, country: true },
+      }),
+    ]);
+    respondedSet = new Set(responses.map((r) => r.surveyId));
+    followingSet = new Set(follows.map((f) => f.followingId));
+    viewer = v;
+  }
+
+  for (const survey of surveys) {
+    const isAuthor = !!viewerId && viewerId === survey.authorId;
+    const hasResponded = respondedSet.has(survey.id);
+    const myResponse = hasResponded ? { id: "responded" } : null;
+
+    // canRespond — same rules as audienceAllows, but using the batched sets so
+    // we don't hit the DB per survey.
+    let canRespond = false;
+    if (viewerId && !isAuthor && !hasResponded && !isSurveyOver(survey)) {
+      const aud = survey.audience as Audience;
+      if (aud === "everyone") canRespond = true;
+      else if (aud === "followers") canRespond = followingSet.has(survey.authorId);
+      else if (aud === "ng_only") canRespond = viewer ? isNgTied(viewer) : false;
+    }
+
+    const canSeeResults = maySeeResults(survey, { isAuthor, hasResponded });
+
+    out.set(
+      survey.postId,
+      shapeSurvey(survey, { isAuthor, canSeeResults, myResponse, canRespond }),
+    );
+  }
+
+  return out;
+}
+
+/**
+ * Mutate an array of ALREADY-SHAPED client posts, attaching `.survey` to each
+ * one whose `postType === "survey"`. One line to call from any feed endpoint:
+ *
+ *     const out = await attachSurveys(posts, userId);
+ *     return res.json({ success: true, posts: out, hasMore });
+ *
+ * Requires the shaped posts to carry `postType` + `postId` (postToClientShape
+ * now includes `postType`).
+ */
+export async function attachSurveys(
+  posts: any[],
+  viewerId: string | null,
+): Promise<any[]> {
+  const surveyPostIds = posts
+    .filter((p) => p.postType === "survey")
+    .map((p) => p.postId);
+  if (surveyPostIds.length === 0) return posts;
+
+  const map = await loadSurveysForPosts(surveyPostIds, viewerId);
+  for (const p of posts) {
+    if (p.postType === "survey") p.survey = map.get(p.postId) ?? null;
+  }
+  return posts;
+}
+
 export default {
   createSurvey,
   getSurvey,

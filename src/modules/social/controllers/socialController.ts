@@ -1,4 +1,12 @@
 // backend/controllers/socialController.ts
+//
+// PHASE 11 — every feed now embeds surveys via attachSurveys(posts, viewerId).
+//   - attachSurveys is GUEST-SAFE: viewerId may be null. Survey posts come back
+//     with canRespond:false / hasResponded:false and visibility-only results.
+//   - Standard posts cost nothing extra (attachSurveys no-ops when a page has no
+//     survey posts).
+//   - Wired into: getForYouFeed, getFollowingFeed, getUserPosts, getSavedPosts,
+//     getPostById. (getForYouFeed + getPostById are the ones that can be guests.)
 
 import admin from "firebase-admin";
 import { prisma } from "../../../prisma";
@@ -6,6 +14,7 @@ import { resolveUserId } from "../utils/resolveUser";
 import { postToClientShape } from "../services/postPresentation";
 import { buildForYouFeed } from "../services/feedRanking.service";
 import { bumpAffinityForEngagement } from "../services/affinity.service";
+import { attachSurveys } from "./surveyController"; // PHASE 11
 
 const db = admin.firestore();
 
@@ -87,7 +96,7 @@ const commentOnPost = async (req: any, res: any) => {
       });
 
       void bumpAffinityForEngagement(userId, postId, "comment");
-      
+
       return c;
     });
 
@@ -164,12 +173,11 @@ const getTopEarners = async (req: any, res: any) => {
 
 const getForYouFeed = async (req: any, res: any) => {
   try {
-    const userId = req.user?.id ?? null;           // may be null (guest)
+    const userId = req.user?.id ?? null; // may be null (guest)
     const { limit = 20 } = req.query;
     const limitNum = Math.min(parseInt(limit as string) || 20, 50);
 
-    // ── STAGES 1–5 (candidate gen → filter → rank → re-rank → mark seen) ──────
-    // All of it lives in the engine. We get back the final ordered posts.
+    // STAGES 1-5 (candidate gen -> filter -> rank -> re-rank -> mark seen).
     const { posts: ranked, hasMore } = await buildForYouFeed({
       userId,
       limit: limitNum,
@@ -179,8 +187,7 @@ const getForYouFeed = async (req: any, res: any) => {
       return res.json({ success: true, posts: [], hasMore: false });
     }
 
-    // ── Per-viewer enrichment (only meaningful when logged in) ───────────────
-    // Load the follow set once (not per post). Guests skip all of this.
+    // Per-viewer enrichment (only meaningful when logged in).
     let followingIds = new Set<string>();
     if (userId) {
       const u = await prisma.user.findUnique({
@@ -190,8 +197,7 @@ const getForYouFeed = async (req: any, res: any) => {
       followingIds = new Set((u?.following ?? []).map((f) => f.followingId));
     }
 
-    // Batch the repost counts for the served posts in ONE query (keeps parity
-    // with the old `_count.reposts` without an N+1).
+    // Batch repost counts (no N+1).
     const ids = ranked.map((p) => p.id);
     const repostGroups = await prisma.repost.groupBy({
       by: ["originalPostId"],
@@ -234,7 +240,10 @@ const getForYouFeed = async (req: any, res: any) => {
       }),
     );
 
-    return res.json({ success: true, posts, hasMore });
+    // PHASE 11: embed surveys so survey posts render instantly (guest-safe).
+    const finalPosts = await attachSurveys(posts, userId);
+
+    return res.json({ success: true, posts: finalPosts, hasMore });
   } catch (error: any) {
     console.error("❌ Get For You feed error:", error);
     return res
@@ -242,107 +251,6 @@ const getForYouFeed = async (req: any, res: any) => {
       .json({ error: "Failed to fetch feed", message: error.message });
   }
 };
-// const getForYouFeed = async (req: any, res: any) => {
-//   try {
-//     const userId = req.user?.id;
-//     const { limit = 20, lastPostId } = req.query;
-//     const limitNum = Math.min(parseInt(limit as string), 50);
-
-//     // const user = await prisma.user.findUnique({
-//     //   where: { id: userId },
-//     //   include: { following: true },
-//     // });
-
-//     // if (!user) {
-//     //   return res.status(404).json({ error: "User not found" });
-//     // }
-
-//     let user = null;
-//     if (userId) {
-//       user = await prisma.user.findUnique({
-//         where: { id: userId },
-//         include: { following: true },
-//       });
-//     }
-
-//     // Build query with optional cursor
-//     const queryOptions: any = {
-//       take: limitNum,
-//       orderBy: [{ algorithmScore: "desc" }, { createdAt: "desc" }],
-//       include: {
-//         _count: {
-//           select: { reposts: true },
-//         },
-//       },
-//     };
-
-//     // Only add cursor if lastPostId is provided (handles initial load)
-//     if (lastPostId) {
-//       queryOptions.cursor = { id: lastPostId as string };
-//       queryOptions.skip = 1;
-//     }
-
-//     const rows = await prisma.post.findMany(queryOptions);
-
-//     console.log("✅ Found", rows.length, "posts");
-
-//     const posts = await Promise.all(
-//       rows.map(async (doc: any) => {
-//         let isFollowing = false;
-//         if (userId && doc.userId !== userId) {
-//           isFollowing =
-//             user?.following.some((f) => f.followingId === doc.userId) || false;
-//         }
-
-//         let isSaved = false;
-//         if (userId) {
-//           const saved = await prisma.savedPost.findUnique({
-//             where: { userId_postId: { userId, postId: doc.id } },
-//           });
-//           isSaved = !!saved;
-//         }
-
-//         let isLiked = false;
-
-//         // const like = await prisma.postLike.findUnique({
-//         //   where: {
-//         //     postId_userId: { postId: doc.id, userId: userId },
-//         //   },
-//         // });
-//         // isLiked = !!like;
-
-//         if (userId) {
-//           const like = await prisma.postLike.findUnique({
-//             where: {
-//               postId_userId: { postId: doc.id, userId: userId },
-//             },
-//           });
-
-//           isLiked = !!like;
-//         }
-
-//         return postToClientShape({
-//           ...doc,
-//           isFollowing,
-//           repostCount: doc._count.reposts || 0,
-//           isLikedByCurrentUser: isLiked,
-//           isSaved,
-//         });
-//       }),
-//     );
-
-//     res.json({
-//       success: true,
-//       posts,
-//       hasMore: posts.length === limitNum,
-//     });
-//   } catch (error: any) {
-//     console.error("❌ Get For You feed error:", error);
-//     res
-//       .status(500)
-//       .json({ error: "Failed to fetch feed", message: error.message });
-//   }
-// };
 
 const getFollowingFeed = async (req: any, res: any) => {
   try {
@@ -411,9 +319,13 @@ const getFollowingFeed = async (req: any, res: any) => {
       }),
     );
 
+    // PHASE 11: embed surveys (userId is always present here, but pass-through
+    // is null-safe regardless).
+    const finalPosts = await attachSurveys(posts, userId ?? null);
+
     res.json({
       success: true,
-      posts,
+      posts: finalPosts,
       hasMore: posts.length === limitNum,
     });
   } catch (error: any) {
@@ -462,7 +374,6 @@ const followUser = async (req: any, res: any) => {
         },
       });
 
-      // Increment target user's followers count
       await tx.userProfile.update({
         where: { userId: followingId },
         data: {
@@ -470,7 +381,6 @@ const followUser = async (req: any, res: any) => {
         },
       });
 
-      // Increment current user's following count
       await tx.userProfile.update({
         where: { userId: followerId },
         data: {
@@ -516,7 +426,7 @@ const unfollowUser = async (req: any, res: any) => {
       await tx.follow.delete({
         where: { followerId_followingId: { followerId, followingId } },
       });
-      
+
       await tx.userProfile.update({
         where: { userId: followingId },
         data: {
@@ -546,10 +456,7 @@ const getUserProfile = async (req: any, res: any) => {
     const { userId } = req.params;
     const currentUserId = req.user?.id;
 
-    const isOwner = currentUserId === userId; // ← add this
-
-    console.log("🔍 Getting profile for userId:", userId);
-    console.log("🔍 Current user:", currentUserId);
+    const isOwner = currentUserId === userId;
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -560,20 +467,15 @@ const getUserProfile = async (req: any, res: any) => {
     });
 
     if (!user) {
-      console.log("❌ User not found in database");
       return res.status(404).json({ error: "User not found" });
     }
 
-    // Try userProfiles first, fallback to users
-    // let profileDoc = await db.collection("userProfiles").doc(userId).get();
     let profileDoc = user.userProfile;
 
     if (!profileDoc) {
-      console.log("❌ Profile not found in userProfiles or users");
       return res.status(404).json({ error: "User not found" });
     }
 
-    // Check if current user follows this user
     let isFollowing = false;
 
     if (currentUserId) {
@@ -584,9 +486,8 @@ const getUserProfile = async (req: any, res: any) => {
       isFollowing = false;
     }
 
-    // Get badges
     const badgeDoc = await db.collection("userBadges").doc(userId).get();
-    const badges = badgeDoc.exists ? badgeDoc.data()?.badges || {} : {}; // Return {} not []
+    const badges = badgeDoc.exists ? badgeDoc.data()?.badges || {} : {};
 
     const profile = {
       userId,
@@ -615,17 +516,14 @@ const getUserProfile = async (req: any, res: any) => {
       isFollowing,
       isFollowingYou: false,
 
-      // ── Only send sensitive fields to the owner ────────────────────────
       ...(isOwner && {
-        email: user.email || null, // login email — owner only
-        phoneNumber: user.phone || null, // phone — owner only
-        transferUID: user.transferUid || null, // financial ID — owner only
-        chatTag: null, // owner only
+        email: user.email || null,
+        phoneNumber: user.phone || null,
+        transferUID: user.transferUid || null,
+        chatTag: null,
         allowFollowersToMessage: profileDoc.allowFollowersToMessage || false,
       }),
     };
-
-    console.log("✅ Profile loaded successfully");
 
     res.json({
       success: true,
@@ -640,7 +538,7 @@ const getUserProfile = async (req: any, res: any) => {
 const getUserPosts = async (req: any, res: any) => {
   try {
     const { userId: userParam } = req.params;
-    const currentUserId = req.user?.id;
+    const currentUserId = req.user?.id ?? null; // may be null on public views
     const { limit = "15", lastPostId } = req.query;
     const limitNum = Math.min(parseInt(limit as string), 30);
 
@@ -652,7 +550,7 @@ const getUserPosts = async (req: any, res: any) => {
     const queryOptions: any = {
       where: { userId: authorId },
       orderBy: { createdAt: "desc" },
-      take: limitNum + 1, // Fetch one extra to determine hasMore
+      take: limitNum + 1,
     };
 
     if (lastPostId) {
@@ -662,7 +560,6 @@ const getUserPosts = async (req: any, res: any) => {
 
     const rows = await prisma.post.findMany(queryOptions);
 
-    // Determine hasMore and trim the extra row
     const hasMore = rows.length > limitNum;
     if (hasMore) rows.pop();
 
@@ -710,7 +607,10 @@ const getUserPosts = async (req: any, res: any) => {
       }),
     );
 
-    res.json({ success: true, posts, hasMore });
+    // PHASE 11: surveys in a profile render instantly too (guest-safe).
+    const finalPosts = await attachSurveys(posts, currentUserId);
+
+    res.json({ success: true, posts: finalPosts, hasMore });
   } catch (error: any) {
     console.error("Get user posts error:", error);
     res.status(500).json({ error: "Failed to fetch posts" });
@@ -817,9 +717,6 @@ const deletePost = async (req: any, res: any) => {
   try {
     const userId = req.user?.id;
     const { postId } = req.params;
-    const { isRepost } = req.body;
-
-    console.log("🗑️ Delete request for post:", postId, "by user:", userId);
 
     if (!userId || !postId) {
       return res.status(400).json({ error: "Missing required fields" });
@@ -851,8 +748,6 @@ const deletePost = async (req: any, res: any) => {
       });
     });
 
-    console.log("✅ Post deleted successfully");
-
     res.json({ success: true, message: "Post deleted successfully" });
   } catch (error: any) {
     console.error("❌ Delete post error:", error);
@@ -871,8 +766,6 @@ const checkLikeStatus = async (req: any, res: any) => {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
-    console.log("🔍 Checking like status for", postIds.length, "posts");
-
     const likeStatus: { [key: string]: boolean } = {};
 
     for (const postId of postIds) {
@@ -881,8 +774,6 @@ const checkLikeStatus = async (req: any, res: any) => {
       });
       likeStatus[postId] = !!likeDoc;
     }
-
-    console.log("✅ Like status checked");
 
     res.json({
       success: true,
@@ -903,8 +794,6 @@ const getSavedPosts = async (req: any, res: any) => {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
-    console.log("📥 Getting saved posts for user:", userId);
-
     const savedRows = await prisma.savedPost.findMany({
       where: { userId },
       orderBy: { savedAt: "desc" },
@@ -915,8 +804,6 @@ const getSavedPosts = async (req: any, res: any) => {
     if (savedRows.length === 0) {
       return res.json({ success: true, posts: [] });
     }
-
-    console.log("📋 Found", savedRows.length, "saved posts");
 
     const posts = await Promise.all(
       savedRows.map(async (s) => {
@@ -957,15 +844,12 @@ const getSavedPosts = async (req: any, res: any) => {
 
     const validPosts = posts.filter((post) => post !== null);
 
-    console.log(
-      "✅ Returning",
-      validPosts.length,
-      "saved posts with full metadata",
-    );
+    // PHASE 11: embed surveys (userId always present in saved posts).
+    const finalPosts = await attachSurveys(validPosts as any[], userId);
 
     res.json({
       success: true,
-      posts: validPosts,
+      posts: finalPosts,
     });
   } catch (error: any) {
     console.error("❌ Get saved posts error:", error);
@@ -1007,8 +891,7 @@ const toggleSavePost = async (req: any, res: any) => {
   }
 };
 
-// GET /web/post/:postId  (optionalAuthMiddleware)
-// Public single-post read for the /post/:id deep link + SEO worker.
+// GET /web/post/:postId  (optionalAuthMiddleware) — can be a GUEST.
 const getPostById = async (req: any, res: any) => {
   try {
     const currentUserId = req.user?.id ?? null; // may be null (guest)
@@ -1057,7 +940,11 @@ const getPostById = async (req: any, res: any) => {
       isFollowing,
     });
 
-    return res.json({ success: true, post: shaped });
+    // PHASE 11: embed the survey for a shared/deep-linked survey post (guest-safe
+    // — attachSurveys takes the single shaped post in an array and returns it).
+    const [withSurvey] = await attachSurveys([shaped], currentUserId);
+
+    return res.json({ success: true, post: withSurvey });
   } catch (error: any) {
     console.error("getPostById error:", error);
     return res
@@ -1067,14 +954,13 @@ const getPostById = async (req: any, res: any) => {
 };
 
 // GET /web/u/:userHandle  (optionalAuthMiddleware)
-// Read-only public profile by handle (handle == unique UserProfile.userName).
 const getPublicProfileByHandle = async (req: any, res: any) => {
   try {
     const currentUserId = req.user?.id ?? null;
     const { userHandle } = req.params;
 
     const profile = await prisma.userProfile.findUnique({
-      where: { userName: userHandle }, // userName is @unique
+      where: { userName: userHandle },
     });
 
     if (!profile) {
@@ -1094,8 +980,6 @@ const getPublicProfileByHandle = async (req: any, res: any) => {
       isFollowing = !!follow;
     }
 
-    // Public-safe shape. Private profiles still expose the header (name/avatar/
-    // counts) but the client hides posts; expand here later if needed.
     return res.json({
       success: true,
       profile: {
@@ -1138,6 +1022,6 @@ export default {
   checkLikeStatus,
   getSavedPosts,
   toggleSavePost,
-  getPostById,              // ← add
-  getPublicProfileByHandle, // ← add
+  getPostById,
+  getPublicProfileByHandle,
 };
