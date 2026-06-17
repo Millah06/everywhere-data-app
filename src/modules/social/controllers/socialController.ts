@@ -12,7 +12,6 @@ import admin from "firebase-admin";
 import { prisma } from "../../../prisma";
 import { resolveUserId } from "../utils/resolveUser";
 import { postToClientShape } from "../services/postPresentation";
-import { buildForYouFeed } from "../services/feedRanking.service";
 import { bumpAffinityForEngagement } from "../services/affinity.service";
 import { attachSurveys } from "./surveyController"; // PHASE 11
 
@@ -174,28 +173,27 @@ const getTopEarners = async (req: any, res: any) => {
 const getForYouFeed = async (req: any, res: any) => {
   try {
     const userId = req.user?.id ?? null; // may be null (guest)
-    const { limit = 20 } = req.query;
+    const { limit = 20, lastPostId } = req.query;
     const limitNum = Math.min(parseInt(limit as string) || 20, 50);
 
-    // Client sends the postIds it already has (comma-separated) so paging is
-    // deterministic regardless of FeedSeen state. Capped to keep the URL sane.
-    const excludeParam = (req.query.exclude as string) || "";
-    const excludeIds = excludeParam
-      ? excludeParam.split(",").map((s) => s.trim()).filter(Boolean).slice(0, 120)
-      : [];
-
-    // STAGES 1-5 (candidate gen -> filter -> rank -> re-rank -> mark seen).
-    const { posts: ranked, hasMore } = await buildForYouFeed({
-      userId,
-      limit: limitNum,
-      excludeIds,
-    });
-
-    if (ranked.length === 0) {
-      return res.json({ success: true, posts: [], hasMore: false });
+    // SIMPLE, RELIABLE keyset pagination — the SAME mechanism as the Following
+    // feed (which works). Difference: no follow filter, and ranked by
+    // algorithmScore. We end the ordering with `id` so the order is TOTAL and
+    // the cursor is unambiguous (the old bug was ordering by a non-unique field
+    // while cursoring on id).
+    const queryOptions: any = {
+      take: limitNum,
+      orderBy: [{ algorithmScore: "desc" }, { id: "desc" }],
+      include: { _count: { select: { reposts: true } } },
+    };
+    if (lastPostId) {
+      queryOptions.cursor = { id: lastPostId as string };
+      queryOptions.skip = 1;
     }
 
-    // Per-viewer enrichment (only meaningful when logged in).
+    const rows = await prisma.post.findMany(queryOptions);
+
+    // Per-viewer flags (load follow set once; guests skip it).
     let followingIds = new Set<string>();
     if (userId) {
       const u = await prisma.user.findUnique({
@@ -205,19 +203,8 @@ const getForYouFeed = async (req: any, res: any) => {
       followingIds = new Set((u?.following ?? []).map((f) => f.followingId));
     }
 
-    // Batch repost counts (no N+1).
-    const ids = ranked.map((p) => p.id);
-    const repostGroups = await prisma.repost.groupBy({
-      by: ["originalPostId"],
-      where: { originalPostId: { in: ids } },
-      _count: { _all: true },
-    });
-    const repostMap = new Map(
-      repostGroups.map((g) => [g.originalPostId, g._count._all]),
-    );
-
     const posts = await Promise.all(
-      ranked.map(async (doc: any) => {
+      rows.map(async (doc: any) => {
         let isFollowing = false;
         let isSaved = false;
         let isLiked = false;
@@ -240,7 +227,7 @@ const getForYouFeed = async (req: any, res: any) => {
 
         return postToClientShape({
           ...doc,
-          repostCount: repostMap.get(doc.id) ?? 0,
+          repostCount: doc._count?.reposts ?? 0,
           isFollowing,
           isSaved,
           isLikedByCurrentUser: isLiked,
@@ -248,10 +235,14 @@ const getForYouFeed = async (req: any, res: any) => {
       }),
     );
 
-    // PHASE 11: embed surveys so survey posts render instantly (guest-safe).
+    // Keep surveys embedded (this part works and is unrelated to paging).
     const finalPosts = await attachSurveys(posts, userId);
 
-    return res.json({ success: true, posts: finalPosts, hasMore });
+    return res.json({
+      success: true,
+      posts: finalPosts,
+      hasMore: posts.length === limitNum,
+    });
   } catch (error: any) {
     console.error("❌ Get For You feed error:", error);
     return res
