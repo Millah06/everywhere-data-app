@@ -56,7 +56,7 @@ export const register = async (req: any, res: any) => {
         // Create bare user profile
         userProfile: {
           create: {
-            userName: `user_${nanoid(8)}`
+            userName: `user_${nanoid(8)}`,
           },
         },
       }, 

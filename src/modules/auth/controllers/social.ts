@@ -15,7 +15,7 @@ const USER_SELECT = {
       fiat: { select: { availableBalance: true, lockedBalance: true, rewardBalance: true } },
     },
   },
-  userProfile: { select: { avatarUrl: true, isVerified: true, badges: true } },
+  userProfile: { select: { avatarUrl: true, isVerified: true, bio: true, website: true } },
 } as const;
 
 /**
