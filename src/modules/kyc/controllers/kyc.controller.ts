@@ -1,5 +1,135 @@
  
 import { prisma } from "../../../prisma";
+import { identityProvider } from "../../verification/providers/dojah.provider";
+import {
+  onKycVerified,
+  recomputeUserVerification, // (re-exported for symmetry; used by admin path)
+} from "../../verification/verification.service";
+
+// Light name-match: the government record's name must reasonably match the
+// account name. We skip paid liveness — this is the light-compliance bar.
+function nameMatches(
+  account: { name?: string | null },
+  id: { firstName?: string; lastName?: string },
+): boolean {
+  const norm = (s?: string | null) =>
+    (s ?? "").toLowerCase().replace(/[^a-z]/g, "");
+  const acc = norm(account.name);
+  const fn = norm(id.firstName);
+  const ln = norm(id.lastName);
+  if (!fn || !ln || !acc) return false;
+  return acc.includes(fn) && acc.includes(ln);
+}
+
+/**
+ * POST /kyc/verify
+ * Authenticated. Body: { method: "bvn" | "nin", number: string }
+ * Synchronous BVN/NIN check via the provider (Dojah). On success: Kyc.status =
+ * "verified" (storing only last4 + matched name + provider ref — never the raw
+ * number), then verification.service flips vendor L1 + recomputes the badge.
+ */
+export const verifyIdentity = async (req: any, res: any) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    const method = String(req.body?.method ?? "").toLowerCase();
+    const number = String(req.body?.number ?? "").replace(/\s+/g, "");
+
+    if (method !== "bvn" && method !== "nin") {
+      return res.status(400).json({ message: "method must be 'bvn' or 'nin'." });
+    }
+    if (!/^\d{11}$/.test(number)) {
+      return res
+        .status(400)
+        .json({ message: `${method.toUpperCase()} must be 11 digits.` });
+    }
+
+    const existing = await prisma.kyc.findUnique({ where: { userId } });
+    if (existing?.status === "verified") {
+      return res.status(409).json({ message: "Identity already verified." });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { name: true },
+    });
+
+    let result;
+    try {
+      result =
+        method === "nin"
+          ? await identityProvider.verifyNin(number)
+          : await identityProvider.verifyBvn(number);
+    } catch (e: any) {
+      if (e?.message === "DOJAH_NOT_CONFIGURED") {
+        return res.status(503).json({
+          message:
+            "Identity verification isn't configured yet. Please try again later.",
+        });
+      }
+      throw e;
+    }
+
+    if (!result.ok) {
+      await prisma.kyc.upsert({
+        where: { userId },
+        create: {
+          userId,
+          status: "rejected",
+          method,
+          document: { reason: result.error },
+        },
+        update: { status: "rejected", method, document: { reason: result.error } },
+      });
+      return res
+        .status(400)
+        .json({ message: result.error ?? "Verification failed." });
+    }
+
+    if (!nameMatches(user ?? {}, result)) {
+      return res.status(400).json({
+        code: "NAME_MISMATCH",
+        message:
+          "The name on this ID doesn't match your account. Use your own BVN/NIN, or update your name first.",
+      });
+    }
+
+    const doc = {
+      method,
+      last4: number.slice(-4),
+      matchedName: `${result.firstName ?? ""} ${result.lastName ?? ""}`.trim(),
+    };
+    await prisma.kyc.upsert({
+      where: { userId },
+      create: {
+        userId,
+        status: "verified",
+        method,
+        providerRef: result.providerRef ?? null,
+        verifiedAt: new Date(),
+        document: doc,
+      },
+      update: {
+        status: "verified",
+        method,
+        providerRef: result.providerRef ?? null,
+        verifiedAt: new Date(),
+        document: doc,
+      },
+    });
+
+    // Flip vendor L1 (if any) + recompute the single public badge.
+    await onKycVerified(userId);
+
+    return res.json({
+      status: "verified",
+      message: "Identity verified. You can now cash out and sell on Amril.",
+    });
+  } catch (e: any) {
+    return res.status(500).json({ message: e.message });
+  }
+};
 
 /**
  * GET /kyc
@@ -110,4 +240,5 @@ export const submitKyc = async (req: any, res: any) => {
 export default {
     getKycStatus,
     submitKyc,
+    verifyIdentity,
 }

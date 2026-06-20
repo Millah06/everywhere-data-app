@@ -8,6 +8,7 @@ import {
   prismaTransferStatusToApi,
   withTransactionStatus,
 } from "../../../shared/utils/transactionResponse";
+import { isKycVerified } from "../../verification/verification.service";
 
 const fetchListOfBanks = async (req: any, res: any) => {
   try {
@@ -103,6 +104,36 @@ const createExternalWithdrawal = async (req: any, res: any) => {
 
     if (!bankCode || !amount) {
       return res.status(400).json({ error: "Missing receiverUid or amount" });
+    }
+
+    // Phase 13: cash-out to bank requires verified identity (BVN/NIN).
+    if (!(await isKycVerified(userId))) {
+      return res.status(403).json({
+        error:
+          "Verify your identity to withdraw. Open Identity Verification in your wallet.",
+        code: "KYC_REQUIRED",
+      });
+    }
+
+    // Phase 13: daily cash-out cap (mirrors CBN Tier 1; raise later via config).
+    const DAILY_CASHOUT_LIMIT_NGN = 50000;
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const todays = await prisma.transaction.aggregate({
+      _sum: { amount: true },
+      where: {
+        userId,
+        type: "wallet", // external withdrawals are logged with type "wallet"
+        createdAt: { gte: startOfToday },
+        status: { in: ["pending", "success"] as any },
+      },
+    });
+    const usedToday = todays._sum.amount ?? 0;
+    if (usedToday + amount > DAILY_CASHOUT_LIMIT_NGN) {
+      return res.status(403).json({
+        code: "DAILY_LIMIT",
+        error: `Daily withdrawal limit is ₦${DAILY_CASHOUT_LIMIT_NGN.toLocaleString()}. You've used ₦${usedToday.toLocaleString()} today.`,
+      });
     }
 
     const receipientResponse = await createTransferRecipient(

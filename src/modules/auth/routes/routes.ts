@@ -11,6 +11,8 @@ import { resetPin }            from '../controllers/reset-pin';
 import { requestPasswordReset } from '../controllers/request-password-reset';
 import { resetPassword }       from '../controllers/reset-password';
 import { verifyPasswordOtp } from "../controllers/verify-password-opt";
+import { requestEmailVerification } from "../controllers/request-email-verification";
+import { verifyEmail } from "../controllers/verify-email";
 
 
 const router = Router();
@@ -33,6 +35,8 @@ router.post('/auth/complete-profile', completeProfile);
 router.post('/auth/request-pin-reset', requestPinReset);
 router.post('/auth/verify-pin-otp',    verifyPinOtp);
 router.post('/auth/reset-pin',         resetPin);
+router.post("/auth/request-email-verification", requestEmailVerification);
+router.post("/auth/verify-email", verifyEmail);
 
 // Password reset (public — no auth middleware)
 router.post('/auth/request-password-reset', requestPasswordReset);

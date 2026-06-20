@@ -616,19 +616,6 @@ const getUserPosts = async (req: any, res: any) => {
   }
 };
 
-const getTopBadge = (badges: {
-  premiumPaid: boolean;
-  business: boolean;
-  kycBlue: boolean;
-  creatorEarnings: boolean;
-}) => {
-  if (badges.premiumPaid) return "premiumPaid";
-  if (badges.business) return "business";
-  if (badges.kycBlue) return "kycBlue";
-  if (badges.creatorEarnings) return "creatorEarnings";
-  return null;
-};
-
 const createPost = async (req: any, res: any) => {
   try {
     const userId = req.user?.id;
@@ -663,19 +650,20 @@ const createPost = async (req: any, res: any) => {
         userProfile: {
           select: {
             userName: true,
+            isVerified: true,
+            adminVerified: true,
           },
         },
-        badges: true,
       },
     });
 
-    const topBadge = user?.badges ? getTopBadge(user.badges) : null;
+  
 
     const postData = {
       userId,
       userName: user?.name || "Anonymous",
       userHandle: user?.userProfile?.userName || "",
-      topBadge,
+      authorIsVerified: user?.userProfile?.isVerified || user?.userProfile?.adminVerified || false,
       userAvatar: userDoc?.avatarUrl || null,
       title: title?.trim() || null,
       text: text.trim(),

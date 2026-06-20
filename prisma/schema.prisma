@@ -140,8 +140,11 @@ model User {
   passwordResetOtpHash   String?
   passwordResetOtpExpiry DateTime?
 
+  emailVerified        Boolean   @default(false) // ADD
+  emailVerifyOtpHash   String?                   // ADD (mirror passwordResetOtpHash)
+  emailVerifyOtpExpiry DateTime?                 // ADD
+
   kyc            Kyc?
-  badges         Badges?
   coins            UserCoins?
   creatorStats     CreatorStats?
 
@@ -200,7 +203,6 @@ model UserProfile {
   businessEmail          String?
   avatarUrl              String   @default("")
   coverPhotoUrl          String   @default("")
-  badges                 Badges?
 
   followersCount         Int      @default(0)
   followingCount         Int      @default(0)
@@ -209,6 +211,8 @@ model UserProfile {
 
   isPrivate              Boolean  @default(false)
   isVerified             Boolean  @default(false)
+  adminVerified Boolean @default(false)   // ADD — manual grant for notable non-vendor creators
+  // isVerified stays — now the ONLY public badge flag, recomputed by verification.service
 
   totalEarnings          Float    @default(0)
 
@@ -222,19 +226,6 @@ model UserProfile {
   @@index([userName])                          
   @@index([followersCount])                    
   @@index([isVerified, followersCount])       
-}
-
-model Badges {
-  id         String   @id @default(uuid())
-  profileId     String @unique
-  userId        String @unique
-  kycBlue   Boolean  @default(false)
-  premiumPaid  Boolean  @default(false)
-  business   Boolean  @default(false)
-  creatorEarnings Boolean @default(false)
-
-  userPofile UserProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model VirtualAccount {
@@ -347,7 +338,6 @@ model MerchantTrustProfile {
   level    Int    @default(0)            // 0 unverified · 1 identity · 2 trusted · 3 business
   identityDocumentUrl String?
   identityVerified    Boolean @default(false)
-  faceVerified        Boolean @default(false)
   phoneVerified       Boolean @default(false)
   cacVerified         Boolean  @default(false)   // Vendor.cacCertificateUrl already stores the doc
   verificationFeePaid Boolean  @default(false)
@@ -430,7 +420,7 @@ model Post {
   userId             String
   userName           String    @default("Anonymous")
   userHandle         String?   
-  topBadge           String?
+  authorIsVerified Boolean   @default(false)
   userAvatar         String?
   title              String?
   text               String    @default("")
@@ -781,6 +771,10 @@ model Kyc {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  method      String?   // ADD — "bvn" | "nin"
+  providerRef String?   // ADD — Dojah reference id
+  verifiedAt  DateTime? // ADD
+
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
@@ -816,6 +810,7 @@ model Vendor {
   phone                String     @default("")
   cac                  String     @default("")
   cacCertificateUrl    String?    @default("")
+  businessDocuments    Json?
   rating               Float      @default(0)
   totalCompletedOrders Int        @default(0)
   completionRate       Float      @default(100)
@@ -1050,6 +1045,8 @@ model AppConfig {
   bonusData             Float  @default(0)
   bonusCable            Float  @default(0)
   bonusElectric         Float  @default(0)
+
+  businessFeeEnabled Boolean @default(false) // ADD — keeps the ₦2,500 path dormant
 
   autoCancelMinutes Int @default(30)
 

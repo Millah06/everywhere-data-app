@@ -27,6 +27,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from "../../prisma";
+import {
+  recomputeUserVerification,
+  onKycVerified,
+} from "../verification/verification.service";
 import admin from "firebase-admin";
 import { uploadImage } from "../../shared/services/uploadImage.service";
 import { WalletService } from "../../shared/services/wallet.service";
@@ -166,6 +170,7 @@ function nextLevelRequirements(
   profile: { level: number; cacVerified: boolean; verificationFeePaid: boolean },
   stats: VendorTrustStats,
   hasCacDoc: boolean,
+  emailVerified: boolean = false,
 ) {
   if (profile.level === 0) {
     return {
@@ -181,6 +186,11 @@ function nextLevelRequirements(
       level: 2,
       pendingAdminReview: false,
       requirements: [
+        {
+          key: "email",
+          label: "Verify your email address",
+          met: emailVerified,
+        },
         {
           key: "orders",
           label: "Complete 50 orders",
@@ -224,12 +234,7 @@ function nextLevelRequirements(
           current: Math.round(stats.disputeRatePercent * 10) / 10,
           target: L3_MAX_DISPUTE_RATE,
         },
-        { key: "cac", label: "Upload CAC certificate", met: hasCacDoc },
-        {
-          key: "fee",
-          label: `Pay ₦${VERIFICATION_FEE.toLocaleString()} verification fee`,
-          met: profile.verificationFeePaid,
-        },
+        { key: "cac", label: "Upload business documents", met: hasCacDoc },
         { key: "admin", label: "Admin review & approval", met: false },
       ],
     };
@@ -243,9 +248,11 @@ function serializeProfile(
   hasCacDoc: boolean,
   pendingRequest: any | null,
   catalogOverrides: CatalogOverrides | null = null,
+  vendor?: any,
+  emailVerified: boolean = false,
 ) {
   const rule = rulesForLevel(profile.level);
-  const next = nextLevelRequirements(profile, stats, hasCacDoc);
+  const next = nextLevelRequirements(profile, stats, hasCacDoc, emailVerified);
   if (next && pendingRequest && pendingRequest.toLevel === next.level) {
     next.pendingAdminReview = pendingRequest.status === "pending";
   }
@@ -281,10 +288,13 @@ function serializeProfile(
     cacVerified: profile.cacVerified,
     hasCacDocument: hasCacDoc,
     verificationFeePaid: profile.verificationFeePaid,
+    emailVerified,
     adminApproved: profile.adminApproved,
     adminReviewNote: profile.adminReviewNote ?? null,
     identityDocumentUrl: profile.identityDocumentUrl ?? null,
     verificationFee: VERIFICATION_FEE,
+    cacCertificateUrl: vendor?.cacCertificateUrl ?? null,
+    businessDocuments: vendor?.businessDocuments ?? null,
     stats,
     nextLevel: next,
     pendingRequest: pendingRequest
@@ -310,7 +320,13 @@ const getTrustStatus = async (req: any, res: any) => {
 
     const profile = await ensureTrustProfile(vendor.id);
     const stats = await computeVendorTrustStats(vendor.id);
-    const hasCacDoc = !!vendor.cacCertificateUrl;
+    const hasCacDoc = !!(vendor.cacCertificateUrl || (vendor as any).businessDocuments);
+
+    const userRecord = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { emailVerified: true },
+    });
+    const emailVerified = userRecord?.emailVerified ?? false;
 
     const pendingRequest = await prisma.trustLevelUpgradeRequest.findFirst({
       where: { vendorId: vendor.id, status: "pending" },
@@ -329,7 +345,7 @@ const getTrustStatus = async (req: any, res: any) => {
     }
 
     res.json(
-      serializeProfile(profile, stats, hasCacDoc, pendingRequest, overrides),
+      serializeProfile(profile, stats, hasCacDoc, pendingRequest, overrides, vendor, emailVerified),
     );
   } catch (e: any) {
     // Most likely cause pre-migration: trust tables not present yet.
@@ -344,47 +360,100 @@ const getTrustStatus = async (req: any, res: any) => {
 // We treat a submitted ID document as satisfying identity + face for manual
 // review, and derive phoneVerified from the user's stored phone. Hooks are left
 // for a future face/OTP integration (faceVerified / phoneVerified flags).
+// const submitIdentity = async (req: any, res: any) => {
+//   try {
+//     const userId = req.user?.id;
+//     if (!req.file)
+//       return res.status(400).json({ message: "No identity document provided" });
+
+//     const vendor = await vendorForUser(userId);
+//     if (!vendor) return res.status(404).json({ message: "Vendor not found" });
+
+//     await ensureTrustProfile(vendor.id);
+
+//     const documentUrl = await uploadImage(req.file, userId, "identityDocument");
+
+//     const user = await prisma.user.findUnique({
+//       where: { id: userId },
+//       select: { phone: true, notificationToken: true },
+//     });
+//     const phoneVerified = !!(user?.phone && user.phone.trim().length > 0);
+
+//     // Auto-approve to level 1.
+//     const updated = await prisma.merchantTrustProfile.update({
+//       where: { vendorId: vendor.id },
+//       data: {
+//         identityDocumentUrl: documentUrl,
+//         identityVerified: true,
+//         faceVerified: true, // document stands in for face/liveness in this phase
+//         phoneVerified,
+//         level: 1,
+//         settlementDelayHours: settlementDelayHoursForDb(1),
+//         dailyWithdrawalLimit: dailyWithdrawalLimitForDb(1),
+//       },
+//     });
+
+//     await notify(
+//       user?.notificationToken,
+//       "IDENTITY VERIFIED",
+//       "Your identity has been verified. You can now sell on Amril.",
+//     );
+
+//     const stats = await computeVendorTrustStats(vendor.id);
+//     res.json(serializeProfile(updated, stats, !!vendor.cacCertificateUrl, null));
+//   } catch (e: any) {
+//     res.status(400).json({ message: e.message });
+//   }
+// };
+
+// L0 → L1 (Identity). Phase 13: identity is proven ONCE at the user level
+// (BVN/NIN). A vendor reaches Level 1 only when the owner's Kyc is verified —
+// no auto-approve on an uploaded image, no fake face/phone flags. The doc upload
+// that used to live here is gone; the body is ignored.
 const submitIdentity = async (req: any, res: any) => {
   try {
     const userId = req.user?.id;
-    if (!req.file)
-      return res.status(400).json({ message: "No identity document provided" });
 
     const vendor = await vendorForUser(userId);
     if (!vendor) return res.status(404).json({ message: "Vendor not found" });
 
     await ensureTrustProfile(vendor.id);
 
-    const documentUrl = await uploadImage(req.file, userId, "identityDocument");
+    // Gate Level 1 on REAL identity verification.
+    const kyc = await prisma.kyc.findUnique({
+      where: { userId },
+      select: { status: true },
+    });
+
+    if (kyc?.status !== "verified") {
+      return res.status(400).json({
+        code: "KYC_REQUIRED",
+        message:
+          "Verify your identity first (BVN or NIN) to start selling. Open Identity Verification in your wallet.",
+      });
+    }
+
+    // Flip Level 1 (with a real phoneVerified) + recompute the owner's badge.
+    await onKycVerified(userId);
+
+    const profile = await prisma.merchantTrustProfile.findUnique({
+      where: { vendorId: vendor.id },
+    });
+    const stats = await computeVendorTrustStats(vendor.id);
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { phone: true, notificationToken: true },
+      select: { notificationToken: true },
     });
-    const phoneVerified = !!(user?.phone && user.phone.trim().length > 0);
-
-    // Auto-approve to level 1.
-    const updated = await prisma.merchantTrustProfile.update({
-      where: { vendorId: vendor.id },
-      data: {
-        identityDocumentUrl: documentUrl,
-        identityVerified: true,
-        faceVerified: true, // document stands in for face/liveness in this phase
-        phoneVerified,
-        level: 1,
-        settlementDelayHours: settlementDelayHoursForDb(1),
-        dailyWithdrawalLimit: dailyWithdrawalLimitForDb(1),
-      },
-    });
-
     await notify(
       user?.notificationToken,
       "IDENTITY VERIFIED",
-      "Your identity has been verified. You can now sell on Amril.",
+      "Your identity is verified. You can now sell on Amril.",
     );
 
-    const stats = await computeVendorTrustStats(vendor.id);
-    res.json(serializeProfile(updated, stats, !!vendor.cacCertificateUrl, null));
+    res.json(
+      serializeProfile(profile!, stats, !!vendor.cacCertificateUrl, null),
+    );
   } catch (e: any) {
     res.status(400).json({ message: e.message });
   }
@@ -393,6 +462,90 @@ const submitIdentity = async (req: any, res: any) => {
 // L2 → L3 request. Debits the non-refundable ₦2,500 fee, records CAC on file,
 // and opens an admin review request. CAC document itself is uploaded separately
 // via the existing POST /vendor/upload/cac route (sets Vendor.cacCertificateUrl).
+// const payVerificationFee = async (req: any, res: any) => {
+//   try {
+//     const userId = req.user?.id;
+//     const { clientRequestId } = req.body ?? {};
+
+//     const vendor = await vendorForUser(userId);
+//     if (!vendor) return res.status(404).json({ message: "Vendor not found" });
+
+//     const profile = await ensureTrustProfile(vendor.id);
+
+//     if (profile.level < 2) {
+//       return res.status(400).json({
+//         message: "You must reach Trusted (level 2) before upgrading to Business.",
+//       });
+//     }
+//     if (profile.level >= 3) {
+//       return res.status(400).json({ message: "Already Business verified." });
+//     }
+//     if (!vendor.cacCertificateUrl) {
+//       return res
+//         .status(400)
+//         .json({ message: "Upload your CAC certificate before paying the fee." });
+//     }
+//     if (profile.verificationFeePaid) {
+//       return res
+//         .status(400)
+//         .json({ message: "Verification fee already paid; awaiting review." });
+//     }
+
+//     // Debit the fee (idempotent if a clientRequestId is supplied). Throws
+//     // "Insufficient balance" if the wallet can't cover it.
+//     await WalletService.chargeWalletForFee({
+//       userId,
+//       amount: VERIFICATION_FEE,
+//       type: TX_TYPE.VERIFICATION_FEE,
+//       clientRequestId,
+//       metaData: {
+//         productName: "Business Verification Fee",
+//         vendorId: vendor.id,
+//         nonRefundable: true,
+//       },
+//     });
+
+//     const updated = await prisma.merchantTrustProfile.update({
+//       where: { vendorId: vendor.id },
+//       data: { verificationFeePaid: true, cacVerified: true },
+//     });
+
+//     // Open / refresh the admin review request.
+//     const existing = await prisma.trustLevelUpgradeRequest.findFirst({
+//       where: { vendorId: vendor.id, toLevel: 3, status: "pending" },
+//     });
+//     if (!existing) {
+//       await prisma.trustLevelUpgradeRequest.create({
+//         data: { vendorId: vendor.id, toLevel: 3, status: "pending" },
+//       });
+//     }
+
+//     await admin.firestore().collection("adminNotifications").add({
+//       type: "TRUST_UPGRADE_REQUEST",
+//       vendorId: vendor.id,
+//       vendorName: vendor.name,
+//       toLevel: 3,
+//       createdAt: admin.firestore.FieldValue.serverTimestamp(),
+//     });
+
+//     const stats = await computeVendorTrustStats(vendor.id);
+//     const pending = await prisma.trustLevelUpgradeRequest.findFirst({
+//       where: { vendorId: vendor.id, status: "pending" },
+//       orderBy: { createdAt: "desc" },
+//     });
+//     res.json({
+//       message:
+//         "Payment received. Your Business verification is now under review (1–3 business days).",
+//       ...serializeProfile(updated, stats, true, pending),
+//     });
+//   } catch (e: any) {
+//     res.status(400).json({ message: e.message });
+//   }
+// };
+
+// L2 → L3 request. Phase 13: the ₦2,500 fee is DORMANT (off by default). It
+// remains in code as a growth lever — flip AppConfig.businessFeeEnabled = true
+// to charge again. While off, this just records CAC + opens the admin review.
 const payVerificationFee = async (req: any, res: any) => {
   try {
     const userId = req.user?.id;
@@ -403,45 +556,56 @@ const payVerificationFee = async (req: any, res: any) => {
 
     const profile = await ensureTrustProfile(vendor.id);
 
+    // Is the fee switched on?
+    let feeEnabled = false;
+    try {
+      const cfg = await prisma.appConfig.findFirst();
+      feeEnabled = !!(cfg as any)?.businessFeeEnabled;
+    } catch {
+      feeEnabled = false;
+    }
+
     if (profile.level < 2) {
       return res.status(400).json({
-        message: "You must reach Trusted (level 2) before upgrading to Business.",
+        message:
+          "You must reach Trusted (level 2) before upgrading to Business.",
       });
     }
     if (profile.level >= 3) {
       return res.status(400).json({ message: "Already Business verified." });
     }
-    if (!vendor.cacCertificateUrl) {
-      return res
-        .status(400)
-        .json({ message: "Upload your CAC certificate before paying the fee." });
+    if (!vendor.cacCertificateUrl && !(vendor as any).businessDocuments) {
+      return res.status(400).json({
+        message:
+          "Upload your business documents before requesting Business verification.",
+      });
     }
-    if (profile.verificationFeePaid) {
+    if (feeEnabled && profile.verificationFeePaid) {
       return res
         .status(400)
         .json({ message: "Verification fee already paid; awaiting review." });
     }
 
-    // Debit the fee (idempotent if a clientRequestId is supplied). Throws
-    // "Insufficient balance" if the wallet can't cover it.
-    await WalletService.chargeWalletForFee({
-      userId,
-      amount: VERIFICATION_FEE,
-      type: TX_TYPE.VERIFICATION_FEE,
-      clientRequestId,
-      metaData: {
-        productName: "Business Verification Fee",
-        vendorId: vendor.id,
-        nonRefundable: true,
-      },
-    });
+    // Charge ONLY when the fee is enabled.
+    if (feeEnabled) {
+      await WalletService.chargeWalletForFee({
+        userId,
+        amount: VERIFICATION_FEE,
+        type: TX_TYPE.VERIFICATION_FEE,
+        clientRequestId,
+        metaData: {
+          productName: "Business Verification Fee",
+          vendorId: vendor.id,
+          nonRefundable: true,
+        },
+      });
+    }
 
     const updated = await prisma.merchantTrustProfile.update({
       where: { vendorId: vendor.id },
-      data: { verificationFeePaid: true, cacVerified: true },
+      data: { verificationFeePaid: feeEnabled, cacVerified: true },
     });
 
-    // Open / refresh the admin review request.
     const existing = await prisma.trustLevelUpgradeRequest.findFirst({
       where: { vendorId: vendor.id, toLevel: 3, status: "pending" },
     });
@@ -465,8 +629,9 @@ const payVerificationFee = async (req: any, res: any) => {
       orderBy: { createdAt: "desc" },
     });
     res.json({
-      message:
-        "Payment received. Your Business verification is now under review (1–3 business days).",
+      message: feeEnabled
+        ? "Payment received. Your Business verification is now under review (1–3 business days)."
+        : "Request received. Your Business verification is now under review (1–3 business days).",
       ...serializeProfile(updated, stats, true, pending),
     });
   } catch (e: any) {
@@ -551,11 +716,17 @@ const approveTrust = async (req: any, res: any) => {
     });
 
     // Reconcile the legacy blue-badge flow: Business (L3) == verified merchant.
+    // if (targetLevel >= 3) {
+    //   await prisma.vendor.update({
+    //     where: { id: vendorId },
+    //     data: { verified: true, verificationStatus: "verified" },
+    //   });
+    // }
+
+    // Phase 13: a Business (L3) vendor's owner now qualifies for the single
+    // public "Verified" badge (kyc + business). Recompute from the one source.
     if (targetLevel >= 3) {
-      await prisma.vendor.update({
-        where: { id: vendorId },
-        data: { verified: true, verificationStatus: "verified" },
-      });
+      await recomputeUserVerification(vendor.ownerId);
     }
 
     await prisma.trustLevelUpgradeRequest.updateMany({

@@ -128,9 +128,50 @@ const uploadMenuItemImages = async (req: any, res: any) => {
   }
 };
 
+// POST /vendor/upload/business-document
+// Accepts: { type: 'cacCertificate' | 'addressProof' | 'statusReport' | 'mermat' }
+// Stores the URL in Vendor.businessDocuments as a JSON object, keyed by type.
+const uploadBusinessDocument = async (req: any, res: any) => {
+  try {
+    const userId = req.user?.id;
+    const docType: string = req.body?.type ?? 'cacCertificate';
+    const allowed = ['cacCertificate', 'addressProof', 'statusReport', 'mermat'];
+    if (!allowed.includes(docType)) {
+      return res.status(400).json({ message: 'Invalid document type' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ message: 'No file provided' });
+    }
+
+    const vendor = await prisma.vendor.findFirst({ where: { ownerId: userId } });
+    if (!vendor) return res.status(404).json({ message: 'Vendor not found' });
+
+    const imageUrl = await uploadImage(req.file, userId, `businessDoc_${docType}`);
+
+    // Merge into the existing businessDocuments JSON object.
+    const existing = ((vendor as any).businessDocuments as Record<string, string>) ?? {};
+    const updated = { ...existing, [docType]: imageUrl };
+
+    await prisma.vendor.update({
+      where: { id: vendor.id },
+      data: {
+        businessDocuments: updated,
+        // If it's the CAC certificate, also keep the legacy cacCertificateUrl in sync.
+        ...(docType === 'cacCertificate' ? { cacCertificateUrl: imageUrl } : {}),
+      } as any,
+    });
+
+    res.json({ success: true, type: docType, url: imageUrl, businessDocuments: updated });
+  } catch (e: any) {
+    res.status(400).json({ message: e.message });
+  }
+};
+
 export default {
   uploadVendorLogo,
   uploadVendorCoverImage,
   uploadCacCertificate,
+  uploadBusinessDocument,
   uploadMenuItemImages,
 };

@@ -7,14 +7,13 @@ export function postToClientShape(
     isLikedByCurrentUser?: boolean;
     isSaved?: boolean;
     survey?: any; // embedded by attachSurveys() for survey posts
-  },
+  }
 ) {
   return {
     postId: p.id,
     userId: p.userId,
     userName: p.userName,
     userHandle: p.userHandle,
-    topBadge: p.topBadge,
     userAvatar: p.userAvatar,
     title: p.title,
     text: p.text,
@@ -42,5 +41,6 @@ export function postToClientShape(
     }),
     ...(p.isSaved !== undefined && { isSaved: p.isSaved }),
     ...(p.survey !== undefined && p.survey !== null && { survey: p.survey }),
+    ...(p.authorIsVerified !== undefined && { authorIsVerified: p.authorIsVerified }),
   };
 }

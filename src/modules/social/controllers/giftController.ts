@@ -24,6 +24,7 @@ import {
 } from "../../../shared/helpers/coin.helpers";
 import { recordRevenue } from "../../../shared/services/revenue.service";
 import { bumpAffinityForEngagement } from "../services/affinity.service";
+import { isKycVerified } from "../../verification/verification.service";
 
 const DAILY_GIFT_LIMIT_NAIRA = 50000; // ₦50,000/day anti-abuse cap
 const PLATFORM_FEE_PERCENT = 0.05; // 5% breakage = platform revenue
@@ -176,10 +177,19 @@ const convertCoinsToNaira = async (req: any, res: any) => {
       where: { id: userId },
       select: { phone: true, country: true },
     });
+    
     if (!user || !isNgTied(user)) {
       return res.status(403).json({
         error: "Coin conversion is available to Nigeria-tied accounts only",
         code: "REGION_BLOCKED",
+      });
+    }
+
+    // Phase 13: turning earnings into cash requires verified identity (BVN/NIN).
+    if (!(await isKycVerified(userId))) {
+      return res.status(403).json({
+        error: "Verify your identity (BVN or NIN) to cash out your earnings.",
+        code: "KYC_REQUIRED",
       });
     }
 

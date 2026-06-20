@@ -1,5 +1,9 @@
  
 import { prisma } from "../../../prisma";
+import {
+  onKycVerified,
+  recomputeUserVerification,
+} from "../../verification/verification.service";
  
 
 
@@ -211,12 +215,14 @@ const updateKycStatus = async (req: any, res: any) => {
       },
     });
 
-    // Update isVerified flag on profile
-    await prisma.userProfile.update({
-      where: { userId },
-      data: { isVerified: status === "verified" },
-    });
-
+    // Phase 13: never set the public badge straight from KYC. Route through the
+    // single source — verified flips vendor L1 + recomputes the badge (kyc +
+    // business); a rejection just recomputes (badge drops if business no longer holds).
+    if (status === "verified") {
+      await onKycVerified(userId);
+    } else {
+      await recomputeUserVerification(userId);
+    }
     return res.json(updated);
   } catch (e: any) {
     return res.status(500).json({ message: e.message });

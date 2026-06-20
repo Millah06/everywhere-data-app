@@ -47,7 +47,6 @@ async function main() {
         // the level-1 gate is satisfied. Adjust if your KYC policy differs.
         identityVerified: true,
         phoneVerified: true,
-        faceVerified: false,
         settlementDelayHours: 48,
         dailyWithdrawalLimit: 50000,
       },

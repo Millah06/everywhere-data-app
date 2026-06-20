@@ -34,6 +34,7 @@ router.get("/vendor/:id/reviews", optionalAuthMiddleware, vendorController.getRe
 router.post("/vendor/upload/logo", upload.single("image"), uploadController.uploadVendorLogo);
 router.post("/vendor/upload/coverPhoto", upload.single("image"), uploadController.uploadVendorCoverImage);
 router.post("/vendor/upload/cac", authMiddleware, upload.single("image"), uploadController.uploadCacCertificate);
+router.post("/vendor/upload/business-document", authMiddleware, upload.single("image"), uploadController.uploadBusinessDocument);
 router.post("/vendor/verify/request", authMiddleware, vendorController.requestVerification);
 router.delete("/vendor/delete", authMiddleware, vendorController.deleteVendorAccount);
 
