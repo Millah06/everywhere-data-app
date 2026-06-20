@@ -117,7 +117,6 @@ async function migrateUsers(): Promise<MigrationResult["users"]> {
               bio: data.bio ?? "",
               // You had data.avatar — check your actual Firestore field name
               avatarUrl: data?.avatarUrl ?? data?.avatar ?? data?.photoURL ?? "",
-              badges: data?.badges ?? [],
               isVerified: data?.isVerified ?? false,
               isPrivate: data?.isPrivate ?? false,
               followersCount: data?.followersCount ?? 0,

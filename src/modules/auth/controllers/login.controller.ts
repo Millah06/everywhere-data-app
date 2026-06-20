@@ -37,7 +37,7 @@ export const login = async (req: any, res: any) => {
           },
         },
         userProfile: {
-          select: { avatarUrl: true, isVerified: true, badges: true },
+          select: { avatarUrl: true, isVerified: true, bio: true, website: true },
         },
       },
     });
