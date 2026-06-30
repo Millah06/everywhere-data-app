@@ -30,13 +30,36 @@ const DAILY_GIFT_LIMIT_NAIRA = 50000; // ₦50,000/day anti-abuse cap
 const PLATFORM_FEE_PERCENT = 0.05; // 5% breakage = platform revenue
 
 // Gift catalog — coin cost per gift. Keep in sync with the Flutter GiftType model.
+// Full catalog — kept in lockstep with the Flutter source of truth
+// (app: lib/features/social/models/gift_type.dart). Coins MUST match.
 const GIFT_TYPES = {
+  // Tier 1 — budget
   rose: { coins: 10, emoji: "🌹", name: "Rose" },
+  heart: { coins: 15, emoji: "❤️", name: "Heart" },
   coffee: { coins: 20, emoji: "☕", name: "Coffee" },
-  fire: { coins: 50, emoji: "🔥", name: "Fire" },
-  diamond: { coins: 100, emoji: "💎", name: "Diamond" },
-  rocket: { coins: 500, emoji: "🚀", name: "Rocket" },
-  crown: { coins: 1000, emoji: "👑", name: "Crown" },
+  cake: { coins: 30, emoji: "🎂", name: "Cake" },
+  pizza: { coins: 50, emoji: "🍕", name: "Pizza" },
+  gift: { coins: 75, emoji: "🎁", name: "Gift Box" },
+  star: { coins: 100, emoji: "⭐", name: "Star" },
+  // Tier 2 — mid-range
+  fire: { coins: 150, emoji: "🔥", name: "Fire" },
+  balloon: { coins: 200, emoji: "🎈", name: "Balloon" },
+  trophy: { coins: 250, emoji: "🏆", name: "Trophy" },
+  champagne: { coins: 300, emoji: "🍾", name: "Champagne" },
+  diamond: { coins: 500, emoji: "💎", name: "Diamond" },
+  gem: { coins: 750, emoji: "💍", name: "Gem" },
+  fireworks: { coins: 1000, emoji: "🎆", name: "Fireworks" },
+  // Tier 3 — premium
+  rocket: { coins: 1500, emoji: "🚀", name: "Rocket" },
+  sports: { coins: 2000, emoji: "🏎️", name: "Sports Car" },
+  airplane: { coins: 3000, emoji: "✈️", name: "Airplane" },
+  yacht: { coins: 4000, emoji: "🛥️", name: "Yacht" },
+  castle: { coins: 5000, emoji: "🏰", name: "Castle" },
+  // Tier 4 — VIP
+  crown: { coins: 7500, emoji: "👑", name: "Crown" },
+  unicorn: { coins: 10000, emoji: "🦄", name: "Unicorn" },
+  dragon: { coins: 15000, emoji: "🐉", name: "Dragon" },
+  galaxy: { coins: 20000, emoji: "🌌", name: "Galaxy" },
 } as const;
 type GiftType = keyof typeof GIFT_TYPES;
 

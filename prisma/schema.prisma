@@ -186,6 +186,9 @@ model User {
   coinPurchases    CoinPurchase[] @relation("CoinPurchases")
   coinBoosts       CoinBoost[]    @relation("CoinBoosts")
 
+  redPacketsSent   RedPacket[]      @relation("RedPacketSender")
+  redPacketClaims  RedPacketClaim[] @relation("RedPacketClaimer")
+
   @@index([firebaseUid, createdAt])
   @@index([email])
    @@index([name])
@@ -1282,4 +1285,49 @@ model ReconciliationSnapshot {
   createdAt DateTime @default(now())
 
   @@index([takenAt])
+}
+// ── RED PACKET (WeChat-style hongbao, with coins) ─────────────────────────────
+// A sender locks `totalCoins` into a packet for a chat room (1:1 or group),
+// split into `shares` (Lucky = random amounts, Identical = equal). Recipients
+// claim shares first-come until exhausted; unclaimed coins auto-refund to the
+// sender after `expiresAt` (24h) via the redPacketRefund cron. A 5% platform
+// fee is taken on each CLAIM (claimer nets 95%), consistent with gifting.
+model RedPacket {
+  id                 String   @id @default(uuid())
+  senderId           String
+  roomId             String   // Firestore chat_room id (1:1 or group)
+  totalCoins         Int
+  shares             Int
+  splitMode          String   @default("lucky") // 'lucky' | 'identical'
+  shareAmounts       Json     // int[] gross amounts, length == shares, sum == totalCoins
+  message            String   @default("")
+  status             String   @default("active") // active | exhausted | refunded
+  claimedShares      Int      @default(0)
+  claimedCoins       Int      @default(0) // gross coins claimed so far
+  spentFromPurchased Int      @default(0) // original spend split (for proportional refund)
+  spentFromEarned    Int      @default(0)
+  expiresAt          DateTime
+  createdAt          DateTime @default(now())
+
+  sender User             @relation("RedPacketSender", fields: [senderId], references: [id], onDelete: Cascade)
+  claims RedPacketClaim[]
+
+  @@index([senderId, createdAt])
+  @@index([status, expiresAt])
+  @@index([roomId])
+}
+
+model RedPacketClaim {
+  id          String   @id @default(uuid())
+  redPacketId String
+  claimerId   String
+  grossCoins  Int      // share assigned from the pool
+  netCoins    Int      // credited to claimer after the platform fee
+  claimedAt   DateTime @default(now())
+
+  redPacket RedPacket @relation(fields: [redPacketId], references: [id], onDelete: Cascade)
+  claimer   User      @relation("RedPacketClaimer", fields: [claimerId], references: [id], onDelete: Cascade)
+
+  @@unique([redPacketId, claimerId]) // one claim per user per packet
+  @@index([claimerId, claimedAt])
 }
