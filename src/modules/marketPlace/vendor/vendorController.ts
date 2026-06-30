@@ -182,39 +182,48 @@ const applyAsVendor = async (req: any, res: any) => {
         .json({ message: "You have already applied as a vendor" });
     }
 
-    const vendor = await prisma.vendor.create({
-      data: {
-        ownerId: userId,
-        ownerFirebaseUid: req.user.uid,
-        name,
-        vendorType,
-        description,
-        phone: phone || "",
-        email: email || "",
-        cac: cac || "",
-        status: "pending",
-        isVisible: false,
-        ...(branch && {
-          branches: {
-            create: {
-              isMainBranch: true,
-              managerId: userId,
-              managerUid: req.user.uid,
-              state: branch.state,
-              lga: branch.lga,
-              area: branch.area,
-              street: branch.street,
-              estimatedDeliveryTime: branch.estimatedDeliveryTime || 30,
+    // Create the vendor and flip the owner's role atomically.
+    // `ownerId` is the scalar FK behind the `user` relation, so we set it here
+    // and update the user's role in a SEPARATE step — Prisma rejects doing both
+    // the scalar FK and a nested `user` write in one create (the `~~~ ownerId`
+    // error). $transaction keeps the two writes all-or-nothing.
+    const vendor = await prisma.$transaction(async (tx) => {
+      const created = await tx.vendor.create({
+        data: {
+          ownerId: userId,
+          ownerFirebaseUid: req.user.uid,
+          name,
+          vendorType,
+          description,
+          phone: phone || "",
+          email: email || "",
+          cac: cac || "",
+          status: "pending",
+          isVisible: false,
+          ...(branch && {
+            branches: {
+              create: {
+                isMainBranch: true,
+                managerId: userId,
+                managerUid: req.user.uid,
+                state: branch.state,
+                lga: branch.lga,
+                area: branch.area,
+                street: branch.street,
+                estimatedDeliveryTime: branch.estimatedDeliveryTime || 30,
+              },
             },
-          },
-        }),
-        user: {
-          update: {
-            role: "vendor"
-          }
-        }
-      },
-      include: { branches: true, user: true },
+          }),
+        },
+        include: { branches: true },
+      });
+
+      await tx.user.update({
+        where: { id: userId },
+        data: { role: "vendor" },
+      });
+
+      return created;
     });
 
     await admin.firestore().collection("adminNotifications").add({
